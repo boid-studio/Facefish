@@ -36,9 +36,11 @@ export interface FishPose {
   headPitch: number;
   headYaw: number;
   headRoll: number;
-  /** Small head offset in scene units. */
+  /** Head offset in scene units: where the singer's head is inside the helmet. */
   headX: number;
   headY: number;
+  /** Positive = toward the viewer. */
+  headZ: number;
 
   /** 1 while tracking data is live, 0 while idling. */
   signal: number;
@@ -69,6 +71,7 @@ export function createFishPose(): FishPose {
     headRoll: 0,
     headX: 0,
     headY: 0,
+    headZ: 0,
     signal: 0,
   };
 }

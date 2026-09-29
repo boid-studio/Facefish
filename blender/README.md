@@ -4,10 +4,135 @@ The app loads `public/models/fish.glb` if it exists (or `?model=<url>` for
 testing) and falls back to the procedural fish otherwise. Everything below is
 about making that file so the tracking data lands on the right parts.
 
+## Getting started
+
+There is a starter file that already follows every convention below:
+
+```sh
+/Applications/Blender.app/Contents/MacOS/Blender -b -P blender/make_starter.py
+```
+
+writes `blender/fish_starter.blend` and exports `public/models/fish_starter.glb`.
+Open the `.blend` in Blender and you have a `Head` mesh facing the right way with
+all 52 shape keys, a handful roughed in (`jawOpen`, `mouthPucker`, smile, frown,
+`cheekPuff`, brows), separate `EyeL` / `EyeR` spheres and a `Tail`. Test it in
+the app with `?model=./models/fish_starter.glb`; when it should replace the
+procedural fish, export to `public/models/fish.glb`.
+
+Four reference drawings are in the file as image empties, in the `Reference`
+collection: top, bottom and front each show only in their own orthographic view
+(numpad 7, ctrl+numpad 7, numpad 1), behind the model at half opacity, and a
+three-quarter view stands as a board beside the model. Replace the files in
+`blender/reference/` and re-run `blender/add_references.py` to swap them.
+
+The workflow from there:
+
+1. **Shape the body first**, in Sculpt or Edit mode on the Basis key with all
+   other keys at 0. Shape keys store offsets, so the rough sculpts survive body
+   edits, but adding or deleting vertices does not: settle the topology before
+   sculpting expressions.
+2. **Sculpt the expressions** one key at a time: select the key in Object Data →
+   Shape Keys, set its value to 1, sculpt, set it back to 0. `jawOpen` first.
+3. **Export** by saving the file and running
+
+   ```sh
+   /Applications/Blender.app/Contents/MacOS/Blender -b blender/<your file>.blend -P blender/export_fish.py
+   ```
+
+   which writes `public/models/fish.glb` (add `-- fish_test.glb` for another
+   name, then open the app with `?model=./models/fish_test.glb`). Only visible
+   objects are exported. The script bakes Mirror, Subdivision and other
+   modifiers into the shape keys, which Blender's own exporter cannot do. Then
+   watch the browser console: the app lists matched shape keys, nodes and the
+   triangle count. The manual settings are under *Export* below.
+
+## The expressive fish (fish_starter10)
+
+`fish_starter10.blend` is fish_starter9 sculpted towards the artist's expression sheets in
+`reference/expressions/` (sing, neutral, surprised, sad, laugh). It is what
+`public/models/fish.glb` holds now. On top of the fish_starter9 steps below, these scripts ran on
+the Head mesh only (no new objects):
+
+1. `sculpt_round.py`: rounder, egg-shaped ball; eyes scaled with their sockets; lips forward.
+2. `sculpt_face.py`: eyes spread further round the ball; the mouth closed at rest; fuller lips.
+3. `sculpt_eyelids.py`: slightly smaller eyeballs sunk a little into the sockets, and lids that
+   slide over the top and bottom of each eyeball, so the eyes are lidded like the reference.
+4. `sculpt_mouth.py`: a narrower mouth (corners in along the curve of the head, a little up into a
+   smile) and relaxed, rounder lips.
+
+Then the usual steps 3 to 7 below: face shapes, bake, rig, swim, export.
+
+**Eyelids.** The head is open behind each eyeball. The rim of that hole is the lid edge, and the
+edge loops around it are the lids. `lidlib.py` holds the maths that `sculpt_eyelids.py`,
+`make_face_shapes.py` (eyeBlink, eyeWide, eyeSquint) and `bake_fish_skin.py` (the dark lash
+line on the rim loop) share. Blinks turn the loops about the eye's horizontal axis and keep them
+on a shell just outside the eyeball, so the smoothed lid still covers it. Keep the edge loops
+around the eye hole when you edit the mesh, and re-run the face shapes afterwards.
+
+## The spotted fish (fish_starter9)
+
+`fish_starter9.blend` follows the artist's turnaround in `reference/turnaround.webp` (the six views
+are cropped in `reference/turnaround/`). fish_starter10 above builds on it.
+It was built from fish_starter8 by these scripts, in this order; re-run any step after changing
+the one before it:
+
+1. `rebuild_body.py`: keeps the face (eyes, mouth, teeth, tongue, all shape keys), lowers the
+   forehead so the eyes sit at the top of the head, and lofts a new round body with a short tail
+   stalk behind it, fitted to the reference (CENTER / RADII at the top of the script).
+2. `make_fins.py`: the fins are separate meshes: ribbed fans with scalloped edges and real
+   corrugation, rooted on the body by ray casting. Shapes are parameters in the script (`FINS`).
+   Material `FishFin` is double-sided with a small generated texture.
+3. `make_face_shapes.py`: the 44 face shapes, regenerated for the new head.
+4. `bake_fish_skin.py`: salmon pink with magenta spots, fine scales, lighter belly and lips,
+   four upper teeth, grey-blue eyes. Re-unwraps the head every run.
+5. `rig_fish.py`: Root, Tail (bends the stalk, swings the tail fin), Dorsal, Fin.L/R, Anal; the
+   fin meshes and eyes ride on their bones.
+6. `make_swim.py`: the looping fin animation.
+7. `export_fish.py`.
+
+The `_v1` scripts (`bake_fish_skin_v1.py`, `rig_fish_v1.py`) belong to fish_starter7/8, whose
+fins were part of the head mesh.
+
+## The pink fish (fish_starter8)
+
+`fish_starter8.blend` is the textured, rigged fish with the full face and the swim loop; the app
+loads it from `public/models/fish.glb`. (`fish_starter7.blend` is the same fish one step earlier:
+mirrored half mesh, no face shapes, no swim.)
+
+- **Face.** 44 shape keys in Face Cap order: your `jawOpen`, plus brows, blinks, squints, wide
+  eyes, cheeks, sneers, jaw sideways and forward, all mouth shapes and `tongueOut`. They are
+  generated from the mesh by `blender/make_face_shapes.py`, which you can re-run after reshaping,
+  or sculpt over by hand. The eight `eyeLook*` keys are left out on purpose: the app turns the eye
+  objects for gaze, and would stop doing that if the model had eyeLook shapes. The mesh is a full
+  mesh now (no Mirror modifier), because `_L` and `_R` shapes must move one side only; use
+  Blender's X-mirror option when sculpting symmetric changes.
+- **Swim.** The looping `swim` action (Rig, NLA track `swim`) sculls the pectoral and pelvic fins
+  and ripples the dorsal fin, 1.2 s per stroke. The app plays a clip named `swim` or `idle` on a
+  loop from the moment the model loads, underneath face tracking and actions; the tail is left to
+  the app, which sways it harder while the singer sings. Recreate it with `blender/make_swim.py`,
+  or edit it in the Action Editor (keep the first and last frame equal).
+
+- **Skin.** The look is built procedurally in the `FishSkin_Source` material (pink skin, raised
+  scale discs, freckles, white ribbed fins with pink roots and dark rims, dark mouth, white teeth,
+  pink tongue) and baked into `textures/fish_basecolor.png` and `textures/fish_normal.png`. The
+  exported material `FishBody` is only a Principled BSDF with those two images, which is what
+  glTF and three.js understand. After sculpting, re-bake with
+  `Blender -b blender/fish_starter8.blend -P blender/bake_fish_skin.py`.
+- **Eyes.** `FishEye` uses the generated `textures/fish_eye.png` on a front-projected UV map, so the
+  iris sits where the eye looks. Both eyes rest with no rotation; the app turns them for gaze.
+- **Rig.** `Rig` has `Root` (body and eyes), `Tail` (vertical, so the app's sway swings it
+  sideways), `Dorsal`, `Fin.L/R` and `Pelvic.L/R`. Weights are on the half mesh; the Mirror
+  modifier makes the `.R` side. The face is driven by shape keys, not bones. Rebuild with
+  `Blender -b blender/fish_starter8.blend -P blender/rig_fish.py`,
+  then `make_swim.py` again.
+- **Materials for three.js.** Anything that isn't a Principled BSDF fed by images or plain values
+  (procedural textures, node groups, Mix Shaders) is lost on export. Bake it first.
+
 ## Facing and units
 
-- The fish looks **toward +Y in Blender** (Blender's "front", which becomes +Z
-  in the app, toward the camera). Its top is +Z.
+- The fish looks **toward -Y in Blender**, the direction Blender's Front view
+  (numpad 1) looks at. The glTF exporter turns that into +Z in the app, toward
+  the camera. Its top is +Z.
 - Model at any size; the app scales the whole thing to fit the frame. Roughly
   2 metres nose to tail is a comfortable working size.
 - Apply scale and rotation before exporting (Ctrl+A → All Transforms).
@@ -33,10 +158,11 @@ than 52. The ones that carry most of the performance:
 - `cheekPuff`, `tongueOut`
 - `eyeLook{Up,Down,In,Out}_L/R` if the eyes are part of the head mesh
 
-Remember the app is a **mirror**: `_L` is the user's left, which should be on
-the fish's screen-left, i.e. **the fish's own right side** (-X in Blender when
-it faces +Y). If you'd rather sculpt in Blender's natural `.L` / `.R` and the
-result comes out swapped, just rename the keys.
+Sides follow Blender's natural convention: `_L` is **the fish's own left**
+(+X when it faces -Y), exactly like a `.L` bone. On stage the fish is the
+singer's face seen from the front, so the singer's left lands on the fish's
+left. For desk testing with the Mirror setting on, the app swaps the `_L` /
+`_R` weights itself, so the keys never need renaming.
 
 ## Made for singing
 
@@ -60,6 +186,82 @@ sculpting time there:
 Shapes blend additively in glTF, so test combinations (jawOpen + mouthFunnel,
 jawOpen + mouthSmile) in Blender's shape key panel before exporting.
 
+### Mouth shapes in priority order
+
+Names must match exactly; the app drives shape keys by these Face Cap names.
+
+**Must have: the core of singing**
+
+1. `jawOpen`: lower jaw and lower lip drop, teeth and tongue go with the jaw. The base
+   for every open vowel.
+2. `mouthFunnel`: lips forward into a round, open "O" ("oh", "aw").
+3. `mouthPucker`: lips forward and tightly gathered, nearly closed ("oo", "w"). Keep it
+   distinct from funnel: pucker is small and tight, funnel is round and open.
+4. `mouthClose`: lips sealed while the jaw is down ("m", "b", "p"). Sculpt it with
+   jawOpen dialled in; Face Cap only sends it together with jawOpen.
+5. `mouthSmile_L` / `mouthSmile_R`: corners up and back, cheeks lifted ("ee", laughing).
+6. `mouthStretch_L` / `mouthStretch_R`: corners straight out and a little down, the
+   wide "ah"/"eh" of a belted note.
+
+**Strongly recommended: shaping and consonants**
+
+7. `mouthUpperUp_L/R`: upper lip up, showing upper teeth ("f", "v").
+8. `mouthLowerDown_L/R`: lower lip down, showing lower teeth; strong on open vowels.
+9. `mouthRollUpper` / `mouthRollLower`: lips roll in over the teeth.
+10. `mouthPress_L/R`: lips flatten and press together.
+11. `tongueOut`: tongue forward over the lower teeth ("l", "th").
+
+**Nice to have: character**
+
+12. `mouthFrown_L/R`, 13. `mouthShrugUpper` / `mouthShrugLower`,
+14. `mouthLeft` / `mouthRight`, 15. `cheekPuff`,
+16. `jawForward`, `jawLeft`, `jawRight`, `mouthDimple_L/R`.
+
+Tips:
+
+- Sculpt each shape alone from neutral, moving only what it needs: a vertex moved by
+  two shapes moves twice.
+- Test the pairs singers actually use: jawOpen + funnel, jawOpen + smile,
+  jawOpen + mouthClose, pucker + a little jawOpen.
+- **The "oo" problem.** For "oo" Face Cap sends a high pucker *and* some jawOpen (and
+  often funnel). Sculpt `mouthPucker` with jawOpen at about 0.25 showing: turn on the
+  "shape key edit mode" button (next to the shape key list) so edit mode shows the
+  mix, then edit only the pucker key until the combination looks right.
+- `_L` / `_R` pairs mirror each other; `_L` is the fish's own left (+X).
+- Keep the teeth rigid with the jaw or the upper head in every shape.
+- Leave all shape key sliders at 0 before exporting, or the exporter bakes them into
+  the resting face.
+- Name the eyeballs `Eye.L` (on +X) and `Eye.R` so the app turns them for gaze.
+
+## Eyelids
+
+Stretching the head skin over a bulging eyeball with shape keys tends to cut into the
+eye halfway through a blink. A shape key moves each vertex in a **straight line**
+from open to closed, and a straight line between two points outside a sphere passes
+through it. Open and closed can both look fine while every in-between value clips.
+glTF has no in-between shapes to correct this, so tuning shape keys can't fully fix it.
+
+**What works: lids that rotate about the eye centre.** Rotation keeps every lid vertex
+at the same distance from the centre, so a lid that starts just outside the eyeball
+stays outside at every blink value.
+
+- **Separate lid shells (recommended).** Per eye, an upper and a lower lid: a slice of
+  a sphere slightly larger than the eyeball, tucked into the socket, skin-coloured
+  with the lash line on its edge. Each is parented to its own bone placed at the eye
+  centre, and a blink rotates the bone about the eye's sideways axis. This is the
+  standard cartoon rig for big eyes and suits the heavy lids of the references.
+- **Lid bones in the head skin.** The lid edge loops are weighted to a bone at the eye
+  centre, so the head stays one mesh. Fully weighted vertices rotate cleanly;
+  partially weighted ones still blend in straight lines and can clip a little.
+
+Check a lid rig by scrubbing the rotation slowly and watching the halfway point, not
+just fully closed.
+
+The app currently drives blinks through morph targets (shape keys) named
+`eyeBlink_L/R`, `eyeWide_L/R`, `eyeSquint_L/R`. Rotating lid bones need a small
+addition in `src/fish/GltfFish.ts`: find the lid bones by name and turn them from those
+values each frame, as it already does for the eyes and the tail. That is not built yet.
+
 ## Bones / empties
 
 Head rotation is not a shape key. The app rotates a node named `Head` (or the
@@ -69,7 +271,7 @@ whole model if there is none). Other names it recognises, all optional:
 | --- | --- |
 | `Head` | head pitch / yaw / roll from Face Cap |
 | `Jaw` | rotated on its X axis by jawOpen, only when there is no `jawOpen` shape key |
-| `EyeL`, `EyeR` (or `Eye.L`, `Eye.R`) | gaze, only when there are no `eyeLook*` shape keys. Handy if the eyes are separate spheres. |
+| `EyeL`, `EyeR` (or `Eye.L`, `Eye.R`) | gaze, only when there are no `eyeLook*` shape keys. Handy if the eyes are separate spheres. `EyeL` is the fish's own left (+X). |
 | `Tail` | a gentle ambient sway |
 
 Object names and bone names both work. Any other bones are left alone, so
@@ -102,8 +304,10 @@ File → Export → glTF 2.0:
 - Format: **glTF Binary (.glb)**
 - Include → Limit to: Selected Objects (if you have helpers you don't want)
 - Transform → **+Y Up** (default)
-- Data → Mesh → **Apply Modifiers**, and **Shape Keys** ticked (under
-  Mesh → Shape Keys in newer Blender)
+- Data → Mesh → **Shape Keys** ticked (under Mesh → Shape Keys in newer
+  Blender). Leave **Apply Modifiers** off, or apply modifiers in Blender
+  *before* adding shape keys: the exporter drops the shape keys of any mesh
+  whose modifiers it applies.
 - Data → Armature → Export Deformation Bones Only is fine
 - Animation → NLA Tracks if you have action clips (see above), otherwise skip animations
 - Keep textures small; the whole file should stay under ~10 MB for the iPad

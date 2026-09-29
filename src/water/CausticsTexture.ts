@@ -27,7 +27,7 @@ export class CausticsTexture {
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         time: { value: 0 },
-        tiles: { value: 3.0 },
+        tiles: { value: 7.0 },
         brightness: { value: 1.0 },
       },
       vertexShader: /* glsl */ `
@@ -67,10 +67,14 @@ export class CausticsTexture {
           // Two layers at different scales and speeds read as depth.
           float a = caustic(vUv * tiles, t);
           float b = caustic(vUv * tiles * 0.5 + vec2(0.37, 0.11), t * 0.7 + 5.0);
-          float v = clamp(a * 0.75 + b * 0.5, 0.0, 1.0);
-          // Bias toward a soft base so the light never goes fully black
-          // between the bright ridges.
-          vec3 col = vec3(0.22) + vec3(0.9, 1.0, 1.0) * v * brightness * 1.3;
+          float v = clamp(a * 0.95 + b * 0.6, 0.0, 1.0);
+          // Sharpen the ridges a little so they read as distinct light lines
+          // on the fish. brightness scales the ridges, not the base, so the
+          // shadows between them stay put.
+          v = pow(v, 0.8);
+          // Near-black between the ridges: the pattern must come from
+          // contrast, not from more light, or tone mapping flattens it.
+          vec3 col = vec3(0.08) + vec3(0.9, 1.0, 1.0) * v * brightness * 1.9;
           gl_FragColor = vec4(col, 1.0);
         }
       `,
@@ -81,6 +85,11 @@ export class CausticsTexture {
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.material);
     quad.frustumCulled = false;
     this.scene.add(quad);
+  }
+
+  /** Contrast of the pattern (1 = default). */
+  setBrightness(value: number): void {
+    this.material.uniforms.brightness.value = value;
   }
 
   render(renderer: THREE.WebGLRenderer, time: number): void {

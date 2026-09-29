@@ -35,6 +35,8 @@ export class GltfFish implements Avatar {
   private restRotations = new Map<THREE.Object3D, THREE.Euler>();
   private hasJawShape = false;
   private hasGazeShapes = false;
+  /** Where the mouth sits in body space when the model has no Jaw node. */
+  private readonly mouthOffset = new THREE.Vector3(0, -0.2, 1.0);
   readonly report: string[] = [];
 
   static async load(url: string): Promise<GltfFish> {
@@ -78,8 +80,19 @@ export class GltfFish implements Avatar {
 
     if (animations.length > 0) {
       this.mixer = new THREE.AnimationMixer(scene);
-      for (const clip of animations) this.clipMap.set(clip.name, clip);
-      this.report.push(`clips: ${animations.map((c) => c.name).join(', ')}`);
+      for (const clip of animations) {
+        // A clip called "swim" or "idle" loops forever underneath everything else (fins
+        // sculling to hold the fish in place); it is not offered as a triggerable action.
+        if (/^(swim|idle)$/i.test(clip.name)) {
+          const loop = this.mixer.clipAction(clip);
+          loop.setLoop(THREE.LoopRepeat, Infinity);
+          loop.play();
+          this.report.push(`idle loop: ${clip.name} (${clip.duration.toFixed(2)} s)`);
+          continue;
+        }
+        this.clipMap.set(clip.name, clip);
+      }
+      if (this.clipMap.size > 0) this.report.push(`clips: ${[...this.clipMap.keys()].join(', ')}`);
     }
 
     // Normalise size: fit the model into roughly the same box as the procedural fish.
@@ -92,11 +105,19 @@ export class GltfFish implements Avatar {
     const center = new THREE.Vector3();
     box.getCenter(center);
     scene.position.sub(center.multiplyScalar(scale));
+    // Nose is toward +z by convention; put the mouth low on the front face.
+    this.mouthOffset.set(0, -size.y * scale * 0.15, size.z * scale * 0.5);
 
+    // A skinned mesh ignores its own node transform (bones place every vertex),
+    // so a mesh named "Head" in a rigged model can't be turned by rotating it.
+    // Skip those; without a Head bone the whole model turns instead.
+    const isSkinned = (obj: THREE.Object3D): boolean =>
+      (obj as THREE.SkinnedMesh).isSkinnedMesh === true ||
+      obj.children.some((c) => (c as THREE.SkinnedMesh).isSkinnedMesh === true);
     scene.traverse((obj) => {
       const name = obj.name.toLowerCase();
-      if (!this.head && /^(head|fishhead|face)$/.test(name)) this.head = obj;
-      if (!this.jaw && /^(jaw|lowerjaw|mouth)$/.test(name)) this.jaw = obj;
+      if (!this.head && /^(head|fishhead|face)$/.test(name) && !isSkinned(obj)) this.head = obj;
+      if (!this.jaw && /^(jaw|lowerjaw|mouth)$/.test(name) && !isSkinned(obj)) this.jaw = obj;
       if (!this.eyeL && /^(eyel|eye_l|eyeleft|lefteye|eye\.l)$/.test(name)) this.eyeL = obj;
       if (!this.eyeR && /^(eyer|eye_r|eyeright|righteye|eye\.r)$/.test(name)) this.eyeR = obj;
       if (!this.tail && /^(tail|tailfin)$/.test(name)) this.tail = obj;
@@ -120,6 +141,17 @@ export class GltfFish implements Avatar {
       }
     });
 
+    let tris = 0;
+    let verts = 0;
+    scene.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        const g = obj.geometry as THREE.BufferGeometry;
+        verts += g.attributes.position?.count ?? 0;
+        tris += g.index ? g.index.count / 3 : (g.attributes.position?.count ?? 0) / 3;
+      }
+    });
+    this.report.push(`${Math.round(tris)} triangles, ${verts} vertices (aim for 20-40k triangles)`);
+
     for (const obj of [this.head, this.jaw, this.eyeL, this.eyeR, this.tail]) {
       if (obj) this.restRotations.set(obj, obj.rotation.clone());
     }
@@ -131,6 +163,13 @@ export class GltfFish implements Avatar {
     if (this.morphs.length === 0) {
       this.report.push('warning: no shape keys matched Face Cap names; only bones/nodes will move');
     }
+  }
+
+  mouthPosition(target: THREE.Vector3): THREE.Vector3 {
+    // The jaw if the model has one, else the front of the head's bounds.
+    if (this.jaw) return this.jaw.getWorldPosition(target);
+    this.body.getWorldPosition(target);
+    return target.add(this.mouthOffset.clone().applyQuaternion(this.body.getWorldQuaternion(new THREE.Quaternion())));
   }
 
   update(pose: FishPose, weights: Float32Array, time: number, dt: number): void {
@@ -153,7 +192,7 @@ export class GltfFish implements Avatar {
         this.head.rotation.copy(e);
       }
     }
-    this.body.position.set(pose.headX, pose.headY + Math.sin(time * 0.9) * 0.03, 0);
+    this.body.position.set(pose.headX, pose.headY + Math.sin(time * 0.9) * 0.03, pose.headZ);
 
     if (this.jaw && !this.hasJawShape) {
       const rest = this.restRotations.get(this.jaw)!;

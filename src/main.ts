@@ -1,6 +1,7 @@
+import * as THREE from 'three';
 import { ActionPlayer } from './actions/ActionPlayer';
 import { GestureTriggers, installKeyboardTriggers } from './actions/triggers';
-import { loadConfig } from './config';
+import { loadConfig, saveConfig } from './config';
 import { FaceCapDecoder } from './facecap/decoder';
 import { WebSocketSource, type FaceSource } from './facecap/source';
 import type { Avatar } from './fish/Avatar';
@@ -9,9 +10,11 @@ import { GltfFish } from './fish/GltfFish';
 import { DEFAULT_MAPPING, FaceToFishMapper } from './fish/mapping';
 import { Stage } from './scene';
 import { Hud } from './ui/hud';
+import { Panel } from './ui/panel';
 
 const STORAGE_KEY = 'facefish.relayUrl';
 const DEFAULT_MODEL = './models/fish.glb';
+const DEFAULT_HELMET_TEXTURE = './textures/helmet.jpg';
 
 function defaultRelayUrl(): string {
   const fromQuery = new URLSearchParams(location.search).get('ws');
@@ -57,30 +60,77 @@ async function main(): Promise<void> {
   stage.setFraming(config.zoom, config.offsetY);
   const fish = await loadAvatar();
   stage.scene.add(fish.root);
+  // Optional photo of the real helmet interior; the procedural brass stays otherwise.
+  const helmetUrl = new URLSearchParams(location.search).get('helmet_tex') ?? DEFAULT_HELMET_TEXTURE;
+  void stage.helmet.loadTexture(helmetUrl).then((ok) => {
+    if (ok) console.info(`[facefish] helmet texture ${helmetUrl}`);
+  });
 
   const decoder = new FaceCapDecoder();
-  const mapper = new FaceToFishMapper({ ...DEFAULT_MAPPING, mirror: config.mirror, headGain: config.headGain });
+  const mapper = new FaceToFishMapper({
+    ...DEFAULT_MAPPING,
+    mirror: config.mirror,
+    headGain: config.headGain,
+    moveGain: config.moveGain,
+    autoCenter: config.autoCenter ? DEFAULT_MAPPING.autoCenter : 0,
+    expressionGain: config.expression,
+  });
   const hud = new Hud(defaultRelayUrl());
   hud.setMode(config.hud);
 
   // Actions: procedural or Blender clips, triggered by keys, relay messages
   // and (optionally) face gestures.
   const actions = new ActionPlayer(fish);
-  actions.onChange = (name) => hud.flashAction(name);
+  actions.strength = config.strength;
   console.info(`[facefish] actions: ${actions.available.join(', ')}`);
+
+  const makeGestures = (): GestureTriggers =>
+    new GestureTriggers((name, gesture) => {
+      console.info(`[facefish] gesture "${gesture}" → ${name}`);
+      actions.trigger(name);
+    });
+  let gestures: GestureTriggers | null = config.gestures ? makeGestures() : null;
+
+  // Everything the panel can change is applied here, so a URL parameter,
+  // a saved setting and a live slider all take the same path.
+  function applyConfig(): void {
+    saveConfig(config);
+    mapper.config.mirror = config.mirror;
+    mapper.config.headGain = config.headGain;
+    mapper.config.moveGain = config.moveGain;
+    mapper.config.autoCenter = config.autoCenter ? DEFAULT_MAPPING.autoCenter : 0;
+    mapper.config.expressionGain = config.expression;
+    actions.strength = config.strength;
+    stage.setFraming(config.zoom, config.offsetY);
+    stage.setCaustics(config.caustics);
+    stage.motionBubbles.amount = config.bubbles;
+    stage.setTint(config.tint);
+    stage.setHelmet(config.helmet);
+    document.body.classList.toggle('porthole', config.porthole);
+    hud.setMode(config.hud);
+    gestures = config.gestures ? (gestures ?? makeGestures()) : null;
+  }
+
+  const panel = new Panel(config, actions.available, {
+    onAction: (name) => actions.trigger(name),
+    onChange: applyConfig,
+    onCenter: () => mapper.centerHead(),
+  });
+  applyConfig();
+  actions.onChange = (name) => {
+    hud.flashAction(name);
+    panel.setPlaying(name);
+  };
   installKeyboardTriggers(
     config.keys,
     (name) => actions.trigger(name),
     (key) => {
-      if (key === 'h' || key === 'Escape') hud.toggle();
+      if (key === 'h') hud.toggle();
+      if (key === 'p') panel.toggle();
+      if (key === 'c') mapper.centerHead();
+      if (key === 'Escape') panel.hide();
     },
   );
-  const gestures = config.gestures
-    ? new GestureTriggers((name, gesture) => {
-        console.info(`[facefish] gesture "${gesture}" → ${name}`);
-        actions.trigger(name);
-      })
-    : null;
 
   let source: FaceSource | null = null;
   let packetsThisSecond = 0;
@@ -114,6 +164,7 @@ async function main(): Promise<void> {
 
   canvas.addEventListener('pointerdown', () => hud.toggle());
 
+  const mouth = new THREE.Vector3();
   let last = performance.now();
   let wasLive = false;
   let nextIdleAction = 20;
@@ -126,6 +177,8 @@ async function main(): Promise<void> {
     gestures?.update(decoder.frame, dt, time);
     actions.update(dt);
     fish.update(pose, mapper.weights, time, dt);
+    fish.root.updateMatrixWorld(true);
+    if (fish.mouthPosition) stage.motionBubbles.pump(dt, fish.mouthPosition(mouth), pose.jawOpen, time);
     stage.update(dt, time);
     stage.render(time);
 

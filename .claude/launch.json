@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "relay",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["relay/relay.mjs"],
+      "port": 8765
+    },
+    {
+      "name": "relay-fake",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["relay/relay.mjs", "--fake"],
+      "port": 8765
+    },
+    {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    }
+  ]
+}

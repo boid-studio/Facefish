@@ -6,3 +6,6 @@ ios/App/Pods/
 ios/App/App.xcworkspace/xcuserdata/
 ios/App/App.xcodeproj/xcuserdata/
 ios/App/public/
+__pycache__/
+*.blend1
+*.psd

@@ -146,7 +146,7 @@ console.log('');
 
 setInterval(() => {
   if (packetsIn || packetsOut) {
-    console.log(`[stats] in ${packetsIn}/s  out ${packetsOut}/s  clients ${clients.size}`);
+    console.log(`[stats] in ${Math.round(packetsIn / 5)}/s  out ${Math.round(packetsOut / 5)}/s  clients ${clients.size}`);
   }
   packetsIn = 0;
   packetsOut = 0;
@@ -206,12 +206,15 @@ const CONTROL_PAGE = `<!doctype html>
   <button data-action="spin">Spin <small>2</small></button>
   <button data-action="nod">Nod <small>3</small></button>
   <button data-action="wiggle">Wiggle <small>4</small></button>
+  <button data-action="shake">Shake <small>5</small></button>
+  <button data-action="bounce">Bounce <small>6</small></button>
+  <button data-action="dash">Dash <small>7</small></button>
 </div>
 <div id="last"></div>
-<small>Keys: 1–4, arrows, Page Up/Down, Space, Enter. MIDI note → action if a device is connected.</small>
+<small>Keys: 1–7, arrows, Page Up/Down, Space, Enter. MIDI note → action if a device is connected.</small>
 <script>
-  const keys = {'1':'lap','2':'spin','3':'nod','4':'wiggle',PageDown:'lap',ArrowRight:'lap',PageUp:'spin',ArrowLeft:'spin',ArrowUp:'nod',ArrowDown:'wiggle',' ':'nod',Enter:'lap',l:'lap',s:'spin',n:'nod',w:'wiggle'};
-  const midiNotes = {36:'lap',37:'spin',38:'nod',39:'wiggle',60:'lap',62:'spin',64:'nod',65:'wiggle'};
+  const keys = {'1':'lap','2':'spin','3':'nod','4':'wiggle','5':'shake','6':'bounce','7':'dash',PageDown:'lap',ArrowRight:'lap',PageUp:'spin',ArrowLeft:'spin',ArrowUp:'nod',ArrowDown:'wiggle',' ':'nod',Enter:'lap',l:'lap',s:'spin',n:'nod',w:'wiggle',k:'shake',b:'bounce',d:'dash'};
+  const midiNotes = {36:'lap',37:'spin',38:'nod',39:'wiggle',40:'shake',41:'bounce',42:'dash',60:'lap',62:'spin',64:'nod',65:'wiggle',67:'shake',69:'bounce',71:'dash'};
   let ws;
   function connect(){
     ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);
@@ -298,7 +301,8 @@ function startFake() {
 
     const messages = [];
     for (let i = 0; i < 52; i++) messages.push(oscMessage('/W', [i, w[i]]));
-    messages.push(oscMessage('/HT', [Math.sin(t * 0.3) * 0.05, 0, -0.4]));
+    // Centimetres from the phone, like Face Cap: a slow wander around the bowl.
+    messages.push(oscMessage('/HT', [Math.sin(t * 0.3) * 6, Math.sin(t * 0.7) * 3, -40 + Math.sin(t * 0.45) * 8]));
     messages.push(oscMessage('/HR', [10 * Math.sin(t * 0.9), 25 * Math.sin(t * 0.5), 8 * Math.sin(t * 0.4)]));
     messages.push(oscMessage('/ELR', [0, 0]));
     messages.push(oscMessage('/ERR', [0, 0]));

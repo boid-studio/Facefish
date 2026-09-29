@@ -139,11 +139,15 @@ export class Fish implements Avatar {
     });
   }
 
+  mouthPosition(target: THREE.Vector3): THREE.Vector3 {
+    return this.cavity.getWorldPosition(target);
+  }
+
   /** Apply a pose. `time` in seconds drives ambient fin and tail motion. */
   update(pose: FishPose, _weights: Float32Array, time: number, _dt: number): void {
     // Head orientation and drift.
     this.head.rotation.set(pose.headPitch, pose.headYaw, pose.headRoll, 'YXZ');
-    this.head.position.set(pose.headX, pose.headY + Math.sin(time * 0.9) * 0.03, 0);
+    this.head.position.set(pose.headX, pose.headY + Math.sin(time * 0.9) * 0.03, pose.headZ);
 
     // Cheeks.
     const puff = 1 + pose.cheekPuff * 0.12;

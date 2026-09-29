@@ -16,6 +16,7 @@ export class UnderwaterBackground {
         deep: { value: new THREE.Color(0x03111f) },
         shallow: { value: new THREE.Color(0x0e5a78) },
         shaftColor: { value: new THREE.Color(0x3e9fb8) },
+        causticStrength: { value: 1 },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -31,6 +32,7 @@ export class UnderwaterBackground {
         uniform vec3 deep;
         uniform vec3 shallow;
         uniform vec3 shaftColor;
+        uniform float causticStrength;
         varying vec2 vUv;
 
         float hash(float n) { return fract(sin(n) * 43758.5453123); }
@@ -55,7 +57,9 @@ export class UnderwaterBackground {
 
           // Surface shimmer: caustics stretched horizontally, fading with depth.
           float c = texture2D(caustics, vUv * vec2(2.5, 1.2) + vec2(time * 0.006, 0.0)).r;
-          col += shaftColor * (c - 0.35) * pow(vUv.y, 2.5) * 0.45;
+          // Kept faint on purpose: the caustics should read on the fish,
+          // not compete with it from behind.
+          col += shaftColor * (c - 0.3) * pow(vUv.y, 2.6) * 0.18 * causticStrength;
 
           // Gentle vignette so the fish stays the focus.
           float d = distance(vUv, vec2(0.5, 0.55));
@@ -76,5 +80,9 @@ export class UnderwaterBackground {
 
   update(time: number): void {
     this.material.uniforms.time.value = time;
+  }
+
+  setCaustics(strength: number): void {
+    this.material.uniforms.causticStrength.value = strength;
   }
 }

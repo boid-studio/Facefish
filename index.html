@@ -29,6 +29,29 @@
         <button type="submit">Connect</button>
       </form>
     </div>
+    <button id="panel-toggle" type="button" aria-label="Controls" title="Controls (p)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" />
+        <circle cx="9" cy="7" r="2" fill="var(--bg)" /><circle cx="15" cy="12" r="2" fill="var(--bg)" /><circle cx="8" cy="17" r="2" fill="var(--bg)" />
+      </svg>
+    </button>
+    <div id="panel" aria-label="Controls">
+      <div id="panel-head">
+        <h2>Controls</h2>
+        <button id="panel-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <section>
+        <h3>Actions</h3>
+        <div id="panel-actions"></div>
+        <p class="panel-note">Keys work from a clicker or pedal too. <kbd>p</kbd> toggles this panel, <kbd>h</kbd> the status.</p>
+      </section>
+      <section>
+        <h3>Settings</h3>
+        <div id="panel-settings"></div>
+        <button id="panel-center" type="button">Center head <small>c</small></button>
+        <button id="panel-reset" type="button">Reset to defaults</button>
+      </section>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

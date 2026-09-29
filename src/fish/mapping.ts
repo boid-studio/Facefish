@@ -1,4 +1,4 @@
-import { BLENDSHAPE_COUNT, BS } from '../facecap/blendshapes';
+import { BLENDSHAPE_COUNT, BLENDSHAPE_NAMES, BS } from '../facecap/blendshapes';
 import type { FaceFrame } from '../facecap/types';
 import { createFishPose, POSE_KEYS, type FishPose, type PoseKey } from './pose';
 
@@ -18,6 +18,22 @@ export interface MappingConfig {
   headSigns: { pitch: number; yaw: number; roll: number };
   /** Scale applied to head rotation (1 = follow exactly). */
   headGain: number;
+  /**
+   * Scale applied to head position. The helmet is mounted on the shoulders,
+   * so the head moves freely inside it; this turns that into the fish
+   * moving around the bowl. Scene units per centimetre at gain 1.
+   */
+  moveGain: number;
+  /** Extra sign per position axis, like headSigns. */
+  posSigns: { x: number; y: number; z: number };
+  /**
+   * Slowly re-learn the resting head pose while tracking, so a shifted
+   * helmet or a slightly off-centre phone don't leave the fish leaning.
+   * Seconds to converge; 0 disables it (use centerHead() instead).
+   */
+  autoCenter: number;
+  /** Exaggeration of the tracked blendshapes (1 = as tracked, 2 = double). */
+  expressionGain: number;
   /** Clamp for head rotation in degrees. */
   headLimitDeg: number;
   /** Max eye rotation in radians. */
@@ -32,7 +48,11 @@ export interface MappingConfig {
 export const DEFAULT_MAPPING: MappingConfig = {
   mirror: false,
   headSigns: { pitch: 1, yaw: 1, roll: 1 },
-  headGain: 0,
+  headGain: 1,
+  moveGain: 1,
+  posSigns: { x: 1, y: 1, z: 1 },
+  autoCenter: 30,
+  expressionGain: 1,
   headLimitDeg: 55,
   eyeRange: 0.45,
   idleAfter: 1.5,
@@ -71,6 +91,13 @@ function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
+/** Index of the opposite-side shape for every `_L` / `_R` shape, else itself. */
+const MIRROR_INDEX: number[] = BLENDSHAPE_NAMES.map((name, i) => {
+  const other = name.endsWith('_L') ? name.slice(0, -2) + '_R' : name.endsWith('_R') ? name.slice(0, -2) + '_L' : null;
+  const j = other ? (BLENDSHAPE_NAMES as readonly string[]).indexOf(other) : -1;
+  return j >= 0 ? j : i;
+});
+
 /**
  * Turns FaceFrames into a smoothed FishPose, falling back to a gentle idle
  * animation whenever the live data stops.
@@ -81,9 +108,16 @@ export class FaceToFishMapper {
   readonly weights = new Float32Array(BLENDSHAPE_COUNT);
   private readonly target: FishPose = createFishPose();
   private readonly targetWeights = new Float32Array(BLENDSHAPE_COUNT);
+  private readonly scaled = new Float32Array(BLENDSHAPE_COUNT);
   private lastPacketTime = -Infinity;
   private nextBlink = 2;
   private blinkPhase = 1;
+  /** Resting head pose, in Face Cap units (cm, degrees). */
+  private readonly neutralPos = { x: 0, y: 0, z: 0 };
+  private readonly neutralRot = { x: 0, y: 0, z: 0 };
+  private centered = false;
+  private lastFrame: FaceFrame | null = null;
+  private dtLive = 0;
 
   constructor(public config: MappingConfig = { ...DEFAULT_MAPPING }) {}
 
@@ -96,12 +130,26 @@ export class FaceToFishMapper {
     return performance.now() - this.lastPacketTime < this.config.idleAfter * 1000;
   }
 
+  /** Take the current head pose as "at rest": fish centred, facing front. */
+  centerHead(): void {
+    const f = this.lastFrame;
+    if (!f) {
+      this.centered = false;
+      return;
+    }
+    Object.assign(this.neutralPos, f.headPosition);
+    Object.assign(this.neutralRot, f.headRotation);
+    this.centered = true;
+  }
+
   /**
    * Advance the pose by `dt` seconds toward the frame (if live) or the idle
    * behaviour. `time` is a monotonic clock in seconds for idle motion.
    */
   update(frame: FaceFrame, dt: number, time: number): FishPose {
     const live = this.isLive;
+    this.lastFrame = frame;
+    this.dtLive = dt;
     if (live) this.fromFrame(frame);
     else this.idle(time, dt);
     this.target.signal = live ? 1 : 0;
@@ -120,10 +168,20 @@ export class FaceToFishMapper {
   }
 
   private fromFrame(frame: FaceFrame): void {
-    const w = frame.weights;
     const t = this.target;
     const c = this.config;
-    this.targetWeights.set(w);
+    // Exaggerate (or tone down) every tracked shape before mapping, so the
+    // procedural fish and morph-target avatars get the same boost.
+    const w = this.scaled;
+    const g = c.expressionGain;
+    for (let i = 0; i < BLENDSHAPE_COUNT; i++) w[i] = clamp(frame.weights[i] * g, 0, 1);
+    // Morph-target avatars sculpt `_L` on their own left. Seen from the front
+    // that is where the singer's left lands; in a mirror it is the other side.
+    if (c.mirror) {
+      for (let i = 0; i < BLENDSHAPE_COUNT; i++) this.targetWeights[i] = w[MIRROR_INDEX[i]];
+    } else {
+      this.targetWeights.set(w);
+    }
 
     // Which tracked side lands on screen-left? In a mirror the person's left
     // is on screen-left. Seen from the front (helmet), their right is.
@@ -166,17 +224,36 @@ export class FaceToFishMapper {
     t.browR = clamp(boR + w[BS.browInnerUp] * 0.5 - bdR, -1, 1);
     t.browInner = w[BS.browInnerUp];
 
-    // Head. A mirror flips yaw and roll; a front view keeps them.
-    const lim = c.headLimitDeg;
+    // Head, relative to the resting pose. Face Cap sends rotation in
+    // degrees and position in centimetres from the phone.
+    const p = frame.headPosition;
     const r = frame.headRotation;
+    if (!this.centered) this.centerHead();
+    if (c.autoCenter > 0) {
+      // Slow drift toward the current pose, so the rest position follows
+      // the singer without eating deliberate turns and leans.
+      const k = 1 - Math.exp(-this.dtLive / c.autoCenter);
+      this.neutralPos.x += (p.x - this.neutralPos.x) * k;
+      this.neutralPos.y += (p.y - this.neutralPos.y) * k;
+      this.neutralPos.z += (p.z - this.neutralPos.z) * k;
+      this.neutralRot.x += (r.x - this.neutralRot.x) * k;
+      this.neutralRot.y += (r.y - this.neutralRot.y) * k;
+      this.neutralRot.z += (r.z - this.neutralRot.z) * k;
+    }
+    const lim = c.headLimitDeg;
     const yawSign = c.headSigns.yaw * (c.mirror ? -1 : 1);
     const rollSign = c.headSigns.roll * (c.mirror ? -1 : 1);
-    t.headPitch = clamp(r.x, -lim, lim) * DEG * c.headGain * c.headSigns.pitch;
-    t.headYaw = clamp(r.y, -lim, lim) * DEG * c.headGain * yawSign;
-    t.headRoll = clamp(r.z, -lim, lim) * DEG * c.headGain * rollSign;
-    // Head position is in metres; keep it subtle and scale with headGain too.
-    t.headX = clamp(frame.headPosition.x * side, -0.3, 0.3) * 1.5 * c.headGain;
-    t.headY = clamp(frame.headPosition.y, -0.3, 0.3) * 1.5 * c.headGain;
+    t.headPitch = clamp(r.x - this.neutralRot.x, -lim, lim) * DEG * c.headGain * c.headSigns.pitch;
+    t.headYaw = clamp(r.y - this.neutralRot.y, -lim, lim) * DEG * c.headGain * yawSign;
+    t.headRoll = clamp(r.z - this.neutralRot.z, -lim, lim) * DEG * c.headGain * rollSign;
+
+    // Position: up to ±20 cm of head travel becomes fish travel in the bowl.
+    // ARKit's camera looks down -z, so moving toward the phone raises z;
+    // that becomes the fish coming toward the viewer.
+    const unit = 0.05 * c.moveGain;
+    t.headX = clamp(p.x - this.neutralPos.x, -20, 20) * unit * side * c.posSigns.x;
+    t.headY = clamp(p.y - this.neutralPos.y, -20, 20) * unit * c.posSigns.y;
+    t.headZ = clamp(p.z - this.neutralPos.z, -20, 20) * unit * c.posSigns.z;
   }
 
   private idle(time: number, dt: number): void {
@@ -216,6 +293,7 @@ export class FaceToFishMapper {
     t.headRoll = 4 * DEG * Math.sin(time * 0.35 + 1);
     t.headX = 0.05 * Math.sin(time * 0.4);
     t.headY = 0.04 * Math.sin(time * 0.9);
+    t.headZ = 0;
 
     // Same behaviour expressed as raw blendshapes for morph-target avatars.
     const tw = this.targetWeights;

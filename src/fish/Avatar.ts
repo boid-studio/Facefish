@@ -22,4 +22,6 @@ export interface Avatar {
   readonly clips?: string[];
   /** Play a clip once; resolves when it finishes. */
   playClip?(name: string): Promise<void>;
+  /** World position of the mouth, for bubbles. Writes into and returns `target`. */
+  mouthPosition?(target: THREE.Vector3): THREE.Vector3;
 }

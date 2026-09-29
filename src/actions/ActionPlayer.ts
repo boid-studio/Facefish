@@ -13,6 +13,8 @@ export class ActionPlayer {
   private clipPlaying: string | null = null;
   private pending: string | null = null;
   onChange: ((playing: string | null) => void) | null = null;
+  /** Amplitude multiplier for procedural actions (1 = authored size). */
+  strength = 1;
 
   constructor(private readonly avatar: Avatar) {}
 
@@ -67,12 +69,13 @@ export class ActionPlayer {
   update(dt: number): void {
     if (!this.current) return;
     this.current.t += dt / this.current.action.duration;
+    const k = Math.min(3, Math.max(0.25, this.strength));
     if (this.current.t >= 1) {
-      this.current.action.apply(this.avatar.root, 1);
+      this.current.action.apply(this.avatar.root, 1, k);
       this.current = null;
       this.finish();
       return;
     }
-    this.current.action.apply(this.avatar.root, this.current.t);
+    this.current.action.apply(this.avatar.root, this.current.t, k);
   }
 }
