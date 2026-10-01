@@ -9,3 +9,4 @@ ios/App/public/
 __pycache__/
 *.blend1
 *.psd
+ios2/build
