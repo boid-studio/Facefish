@@ -11,3 +11,6 @@ __pycache__/
 *.psd
 ios2/build
 ios2/Packages/RealityKitContent/.build
+ios/Packages/RealityKitContent/.build
+ios/build/dd
+ios/build
