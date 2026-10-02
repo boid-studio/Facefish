@@ -9,13 +9,15 @@ def Xform "Root"
 {
     def Xform "Environment"
     {
-        def Xform "Caustics"
+        def Xform "Backdrop"
         {
+            float3 xformOp:translate = (0, 0, -1.5)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
         }
 
         def Xform "BubbleEmitter"
         {
-            float3 xformOp:translate = (0, -0.18, -0.12)
+            float3 xformOp:translate = (0, -0.3, -0.15)
             uniform token[] xformOpOrder = ["xformOp:translate"]
         }
     }

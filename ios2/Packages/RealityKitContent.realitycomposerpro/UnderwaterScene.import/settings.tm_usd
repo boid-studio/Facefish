@@ -1,0 +1,75 @@
+__type: "tm_usd_asset"
+__uuid: "575c8372-03ce-55f7-abd5-501ea040097c"
+source_path: "/Users/mikaelsundgren/Repos/Facefish/ios2/Packages/RealityKitContent/Sources/RealityKitContent/RealityKitContent.rkassets/UnderwaterScene.usda"
+settings: [
+	{
+		__type: "tm_scene_optimizer"
+		__uuid: "45dfcfa9-5ef7-d79a-08eb-e95095efb4b7"
+		settings: {
+			__uuid: "e7226ee2-618e-5a99-944c-4be26328f0bd"
+			graph: {
+				__uuid: "f72c62ee-0950-9fbb-992a-d20de8fbeee9"
+				interface: {
+					__uuid: "83dbea83-eac3-508f-3f75-ad4918ac5caf"
+					inputs: [
+						{
+							__uuid: "3dbe81aa-8f9f-872a-3dc8-ae822070d9a6"
+							name: "Merging Mode"
+							id: "scene_optimizer_settings__merging_mode"
+							value: {
+								__type: "tm_scene_optimizer_merging_mode"
+								__uuid: "8a0d7c9b-412c-9344-9fd9-158bf633d0d7"
+							}
+							public: true
+							order: 1
+						}
+						{
+							__uuid: "309224da-63b7-59c8-21f5-1c0f9cd67c53"
+							name: "Entities to Keep"
+							id: "scene_optimizer_settings__keep_entities_list"
+							value: {
+								__type: "tm_scene_optimizer_keep_entities_list"
+								__uuid: "9906c6f7-96f8-b0e4-6a56-1addcb66f78c"
+								entities: [
+									{
+										__uuid: "5d792930-1f37-72e8-d58c-f492afccb2ae"
+										name: "/"
+										keep_children: true
+									}
+								]
+							}
+							public: true
+							order: 2
+						}
+					]
+				}
+			}
+		}
+		output: "b5866029-10a6-b1d0-49a2-8b9470353527"
+	}
+	{
+		__type: "tm_lod_generator"
+		__uuid: "1d6c182f-be7d-f7c0-b8b6-5dc01d50a748"
+	}
+]
+pro_settings: [
+	{
+		__type: "tm_usd_purpose_settings"
+		__uuid: "63ef2e48-b1eb-a5be-5944-dc7bf63ec575"
+	}
+	{
+		__type: "tm_usd_dev_settings"
+		__uuid: "6c163979-d148-9540-06e1-6a849d2519e4"
+		mesh_creation_graph: "feefd623-b26a-6155-97b0-2dd807e0e1c3"
+	}
+]
+variants: [
+	{
+		__uuid: "a4667e7a-98c0-6648-58a3-3e3ed02b6cd0"
+		name: "Default"
+		root_entity: "2e5f1008-6623-e75b-1759-f3ed31aec11d"
+		proxy_entity: "baaceeb3-9142-5596-afb1-014d9e747abf"
+		session: "eda46119-8581-f5bf-c32d-d86a88407f8e"
+	}
+]
+__asset_uuid: "2ce04448-536d-b615-9546-6f64b0287188"

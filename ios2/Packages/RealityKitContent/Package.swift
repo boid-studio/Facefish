@@ -13,6 +13,9 @@ let package = Package(
         .library(name: "RealityKitContent", targets: ["RealityKitContent"]),
     ],
     targets: [
-        .target(name: "RealityKitContent"),
+        .target(
+            name: "RealityKitContent",
+            resources: [.process("RealityKitContent.rkassets")]
+        ),
     ]
 )

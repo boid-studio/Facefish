@@ -10,3 +10,4 @@ __pycache__/
 *.blend1
 *.psd
 ios2/build
+ios2/Packages/RealityKitContent/.build

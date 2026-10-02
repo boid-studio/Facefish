@@ -2,6 +2,7 @@ import ARKit
 import Foundation
 import OSLog
 import RealityKit
+import UIKit
 
 /// Drives a loaded avatar's blend shapes and head rotation from `FaceState`.
 final class AvatarController {
@@ -34,6 +35,13 @@ final class AvatarController {
     private(set) var boundLocations: Set<ARFaceAnchor.BlendShapeLocation> = []
     private(set) var appliedJawOpen: Float = 0
 
+    /// Approximate mouth position in the "Head" mesh's local space (near the jawOpen blend shape's hinge point).
+    private static let mouthLocalPosition: SIMD3<Float> = [0, -0.65, 0.98]
+    private static let mouthOpenThreshold: Float = 0.35
+    private static let mouthCloseThreshold: Float = 0.15
+    private var mouthBubbles: Entity?
+    private var mouthIsOpen = false
+
     init(model: Entity, targetSize: Float = 0.25) {
         fit(model, targetSize: targetSize)
         root.addChild(model)
@@ -44,6 +52,14 @@ final class AvatarController {
         logger.info("Bound \(self.boundLocations.count)/52 ARKit blend shapes across \(self.targets.count) mesh(es).")
         if !unmatched.isEmpty {
             logger.info("Unmatched model shapes: \(unmatched.joined(separator: ", "))")
+        }
+
+        if let head = model.findEntity(named: "Head") {
+            let bubbles = Entity()
+            bubbles.position = Self.mouthLocalPosition
+            bubbles.components.set(Self.mouthBubbleEmitter())
+            head.addChild(bubbles)
+            mouthBubbles = bubbles
         }
     }
 
@@ -86,6 +102,7 @@ final class AvatarController {
             smoothedBlendShapes[location] = previousWeight + alpha * (targetWeight - previousWeight)
         }
         appliedJawOpen = smoothedBlendShapes[.jawOpen] ?? 0
+        updateMouthBubbles(jawOpen: appliedJawOpen)
 
         for target in targets {
             guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
@@ -99,6 +116,46 @@ final class AvatarController {
     private func resetSmoothing() {
         smoothedRotation = nil
         smoothedBlendShapes.removeAll(keepingCapacity: true)
+        mouthIsOpen = false
+    }
+
+    /// Fires a small burst of bubbles the moment the mouth opens, with hysteresis to avoid repeat triggers while held open.
+    private func updateMouthBubbles(jawOpen: Float) {
+        if jawOpen > Self.mouthOpenThreshold, !mouthIsOpen {
+            mouthIsOpen = true
+            guard var component = mouthBubbles?.components[ParticleEmitterComponent.self] else { return }
+            component.burst()
+            mouthBubbles?.components.set(component)
+        } else if jawOpen < Self.mouthCloseThreshold {
+            mouthIsOpen = false
+        }
+    }
+
+    private static func mouthBubbleEmitter() -> ParticleEmitterComponent {
+        var component = ParticleEmitterComponent()
+        component.emitterShape = .sphere
+        component.emitterShapeSize = [0.015, 0.015, 0.015]
+        component.birthLocation = .volume
+        component.birthDirection = .world
+        component.emissionDirection = [0, 1, 0.5]
+        component.speed = 0.1
+        component.speedVariation = 0.05
+        component.burstCount = 10
+        component.burstCountVariation = 4
+
+        var particles = component.mainEmitter
+        particles.birthRate = 0
+        particles.lifeSpan = 0.8
+        particles.lifeSpanVariation = 0.3
+        particles.size = 0.006
+        particles.sizeVariation = 0.004
+        particles.acceleration = [0, 0.05, 0]
+        particles.dampingFactor = 0.3
+        particles.color = .constant(.single(UIColor(red: 0.85, green: 0.97, blue: 1, alpha: 0.85)))
+        particles.opacityCurve = .gradualFadeInOut
+        particles.blendMode = .additive
+        component.mainEmitter = particles
+        return component
     }
 
     private static func smoothingFactor(deltaTime: TimeInterval, timeConstant: TimeInterval) -> Float {

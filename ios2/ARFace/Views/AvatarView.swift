@@ -18,27 +18,24 @@ struct AvatarView: View {
 
             let camera = PerspectiveCamera()
             camera.camera.fieldOfViewInDegrees = 35
-            camera.position = [0, 0, 0.5]
+            camera.position = [0, 0, 0.75]
             content.add(camera)
-
-            let light = DirectionalLight()
-            light.light.intensity = 4000
-            light.look(at: .zero, from: [0.3, 0.6, 1], relativeTo: nil)
-            content.add(light)
 
             do {
                 let environment = try await Entity(
                     named: "UnderwaterScene",
                     in: realityKitContentBundle
                 )
-                UnderwaterSceneController.prepare(environment)
+                let underwater = UnderwaterSceneController(scene: environment)
                 content.add(environment)
 
                 let model = try await Entity(named: "fish")
+                underwater.applyCaustics(to: model)
                 let controller = AvatarController(model: model)
                 controller.mirrored = mirrored
                 content.add(controller.root)
                 updateSubscription = content.subscribe(to: SceneEvents.Update.self) { event in
+                    underwater.update(deltaTime: event.deltaTime)
                     controller.apply(tracker.snapshot(), deltaTime: event.deltaTime)
                 }
                 self.controller = controller

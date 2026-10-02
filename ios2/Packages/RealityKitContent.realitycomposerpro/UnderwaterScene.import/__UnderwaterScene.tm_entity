@@ -1,0 +1,106 @@
+__type: "tm_entity"
+__uuid: "2e5f1008-6623-e75b-1759-f3ed31aec11d"
+name: "/"
+components: [
+	{
+		__type: "tm_transform_component"
+		__uuid: "e8dc894e-1607-7bf0-feeb-3ce0ce1aa070"
+		local_position_double: {
+			__uuid: "2f089e5d-e881-bd63-36c7-df6aafbd0b27"
+		}
+		local_rotation: {
+			__uuid: "d70fe2d9-bc40-2355-58d9-167592e05ed8"
+		}
+		local_scale: {
+			__uuid: "0f8d2739-8042-272c-bf20-9c59305e562d"
+		}
+	}
+]
+children: [
+	{
+		__uuid: "2070ea02-90cb-4521-657c-04e414200b04"
+		name: "Root"
+		components: [
+			{
+				__type: "tm_transform_component"
+				__uuid: "f20a5fb7-cd93-9df8-c80c-c44719876dd0"
+				local_position_double: {
+					__uuid: "15509b13-9c8a-8ae6-0dc6-6414f13c6d7d"
+				}
+				local_rotation: {
+					__uuid: "fb679bb8-48d0-f391-4ff2-ce4ac6098d69"
+				}
+				local_scale: {
+					__uuid: "50c5c853-d2df-9746-ef5c-2d88946c0fff"
+				}
+			}
+		]
+		children: [
+			{
+				__uuid: "87cd0b93-17a7-31c4-bfa5-c4d10795a4f6"
+				name: "Environment"
+				components: [
+					{
+						__type: "tm_transform_component"
+						__uuid: "02237102-b1e1-e7a8-e88b-3a6814ffa538"
+						local_position_double: {
+							__uuid: "6c790349-78e4-024b-60eb-c6a72f9b5e83"
+						}
+						local_rotation: {
+							__uuid: "92f185a9-4a51-bd3f-0376-f9aef59f67d1"
+						}
+						local_scale: {
+							__uuid: "0496e44e-35ae-edb9-4b91-e8c7e319e48b"
+						}
+					}
+				]
+				children: [
+					{
+						__uuid: "f0f221ab-3c33-0ff8-1754-4f3c696926c7"
+						name: "Caustics"
+						components: [
+							{
+								__type: "tm_transform_component"
+								__uuid: "94716f91-ac60-4134-64d2-e846da43f805"
+								local_position_double: {
+									__uuid: "c4df472f-9392-c2f6-1a73-638904e6bea4"
+								}
+								local_rotation: {
+									__uuid: "841480a7-4df0-8e27-26b2-65d6d0b1263a"
+								}
+								local_scale: {
+									__uuid: "ff3522a3-ff1f-4dd1-8547-95c055c9d021"
+								}
+							}
+						]
+					}
+					{
+						__uuid: "76499e20-ccb5-7161-95ed-f3b0e5868f6c"
+						name: "BubbleEmitter"
+						components: [
+							{
+								__type: "tm_transform_component"
+								__uuid: "ce6a5de5-7b4e-89e6-5968-e69a367204b4"
+								local_position_double: {
+									__uuid: "9850f357-14bd-30c8-a94e-8a2383c3812c"
+									y: -0.18000000715255737
+									z: -0.11999999731779099
+								}
+								local_rotation: {
+									__uuid: "c2ffc999-f756-70c8-9ac4-fb9945742ccc"
+								}
+								local_scale: {
+									__uuid: "0ac28c78-5580-401b-1cb1-db725862059a"
+								}
+							}
+						]
+					}
+				]
+			}
+		]
+	}
+]
+__asset_uuid: "b7d3253f-73a8-92c2-965f-aaadbe1aac95"
+__asset_labels: [
+	"2cbc16a459dc040f"
+]
