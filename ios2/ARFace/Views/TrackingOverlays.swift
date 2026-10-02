@@ -1,0 +1,52 @@
+import ARKit
+import SwiftUI
+
+struct TrackingStatusBanner: View {
+    let tracker: FaceTracker
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+            if let error = tracker.lastError {
+                banner(Label(error, systemImage: "exclamationmark.triangle"))
+            } else if tracker.snapshot()?.isTracked != true {
+                banner(Label("Looking for a face…", systemImage: "faceid"))
+            }
+        }
+    }
+
+    private func banner(_ label: some View) -> some View {
+        label
+            .font(.callout)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(.top, 8)
+    }
+}
+
+struct BlendShapeDebugView: View {
+    let tracker: FaceTracker
+    var count = 12
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+            let top = (tracker.snapshot()?.blendShapes ?? [:])
+                .sorted { $0.value > $1.value }
+                .prefix(count)
+
+            Grid(alignment: .leading, verticalSpacing: 4) {
+                ForEach(Array(top), id: \.key) { entry in
+                    GridRow {
+                        Text(BlendShapeMapping.displayName(entry.key))
+                            .font(.caption.monospaced())
+                        ProgressView(value: Double(entry.value))
+                            .frame(width: 100)
+                    }
+                }
+            }
+            .padding(10)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+            .padding()
+        }
+    }
+}

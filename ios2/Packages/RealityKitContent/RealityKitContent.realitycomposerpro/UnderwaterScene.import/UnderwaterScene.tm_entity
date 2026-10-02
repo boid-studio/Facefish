@@ -1,0 +1,229 @@
+__type: "tm_entity"
+__uuid: "4c66a2b3-d9c7-34d6-d274-6a335dc57079"
+__prototype_type: "tm_entity"
+__prototype_uuid: "26912fa7-56c3-dc70-bb30-67e9485ac88a"
+children__instantiated: [
+	{
+		__uuid: "85f1236d-d1ee-5ac6-524d-3bb450cb2d34"
+		__prototype_type: "tm_entity"
+		__prototype_uuid: "998212ee-6a2b-2571-b60b-9ca6e5194789"
+		children__instantiated: [
+			{
+				__uuid: "e3dfcba0-505e-1172-d4d5-14a239917156"
+				__prototype_type: "tm_entity"
+				__prototype_uuid: "95a0328e-3430-d0d7-e8f1-d381fec28aa8"
+				children__instantiated: [
+					{
+						__uuid: "b24b2cbd-0de0-e2f5-f8da-2e2dd03f2727"
+						__prototype_type: "tm_entity"
+						__prototype_uuid: "e9f49eaf-c249-2184-473d-054feaf9e9b0"
+						components__instantiated: [
+							{
+								__type: "tm_transform_component"
+								__uuid: "befaf503-a81a-eb27-c53d-778a52ee2687"
+								__prototype_type: "tm_transform_component"
+								__prototype_uuid: "41e9e229-2690-4769-b7cb-7309b5832513"
+								local_position_double: {
+									__uuid: "4f8c92c6-c559-210b-f81f-a90acb1e1fcd"
+									__prototype_type: "tm_position_double"
+									__prototype_uuid: "91088b78-fd01-3870-9e9a-7d31f1d26596"
+									z: 0.027000000700354576
+								}
+								local_rotation: {
+									__uuid: "a7900431-76ab-b345-7b2b-3c894e8bed7c"
+									__prototype_type: "tm_rotation"
+									__prototype_uuid: "4b1a3fca-6281-74ca-0607-a2e7e769eebe"
+								}
+								local_scale: {
+									__uuid: "6f5ce399-295b-b2b0-6037-913636b0ff1a"
+									__prototype_type: "tm_scale"
+									__prototype_uuid: "bbd98f05-1541-edb1-8008-61a2fe0e344f"
+								}
+							}
+						]
+						children: [
+							{
+								__uuid: "f6d463b5-0334-ed16-fe1a-856a0180bd64"
+								name: "Bubble2"
+								components: [
+									{
+										__type: "tm_transform_component"
+										__uuid: "7d7856f4-c22f-e4da-81fd-d1439a558d18"
+										local_position_double: {
+											__uuid: "73aa30f3-019b-eb31-0209-b3bce23311e7"
+											y: 0.18000000715255737
+											z: -0.027000000700354576
+										}
+										local_rotation: {
+											__uuid: "124eaaae-864e-e1e9-f0eb-4766e7fcd58c"
+										}
+										local_scale: {
+											__uuid: "f32e30e5-b90e-8d19-3835-29d29589f043"
+										}
+									}
+									{
+										__type: "tm_re_particle_emitter_component"
+										__uuid: "c5ee1c65-f19c-7ac5-6403-8501fe725866"
+										warmupDuration: 2
+										speed: 0.05000000074505806
+										speedVariation: 0.0010000000474974513
+										radialAmount: 10
+										emissionDirection: {
+											__uuid: "64c0601b-a3e4-f458-2c11-8f7bbda87146"
+											y: 1
+										}
+										emitterShapeSize: {
+											__uuid: "f7a51475-6b0a-4e9c-c625-e6f2ce578be2"
+											x: 1
+											y: 1
+											z: 1
+										}
+										burstCountVariation: 20
+										mainEmitter: {
+											__uuid: "800685f5-5078-3d77-55b1-0f9b8a84614f"
+											birthRate: 2
+											lifeSpan: 10
+											sizeVariation: 0.0099999997764825821
+											sizeMultiplierAtEndOfLifespan: 1
+											mass: 0
+											billboardAxis: {
+												__uuid: "60e97481-b47a-70b7-59de-7590c79c57a1"
+												y: 1
+											}
+											angleVariation: 0.10000000149011612
+											startColorA: {
+												__uuid: "25acb91c-07be-c41f-e099-32d2141163ee"
+												r: 0.53009575605392456
+												g: 0.57452559471130371
+												b: 0.86062335968017578
+											}
+											startColorB: {
+												__uuid: "4a5e1429-c4d8-3770-4314-6db697a4da72"
+												r: 0.99999600648880005
+												g: 0.99999904632568359
+												b: 0.99999988079071045
+											}
+											useStartColorRange: true
+											endColorA: {
+												__uuid: "e1f42ec8-7979-ef6f-de47-2583273f589e"
+												r: 0.46963480114936829
+												g: 0.57453697919845581
+												b: 0.89761209487915039
+											}
+											endColorB: {
+												__uuid: "6ac57dd3-82a1-01f5-da55-c1ab715e82eb"
+												r: 0.12619155645370483
+												g: 0.15835122764110565
+												b: 0.34490558505058289
+											}
+											opacityCurve: 6
+											imageSequence: {
+												__uuid: "ee8e51a1-114b-0423-09a0-632eb65d503d"
+												rowCount: 3
+												columnCount: 3
+												initialFrame: 100
+												frameRate: 9
+											}
+											acceleration: {
+												__uuid: "bd7cdaf3-b17a-a971-e5b7-fddda542bd0f"
+											}
+											noiseStrength: 0.0099999997764825821
+											noiseAnimationSpeed: 0.10000000149011612
+											attractionCenter: {
+												__uuid: "e32ae53a-a37b-7c0a-77cc-7a224f7e013e"
+												y: 100
+											}
+											vortexDirection: {
+												__uuid: "4a9ad0cf-e3d7-6ef8-1d0f-91eb42f50c02"
+												y: 100
+											}
+										}
+										secondaryEmitter: {
+											__uuid: "fa564bce-0012-6296-5a05-0929d7576003"
+											billboardAxis: {
+												__uuid: "dd4bbf5d-05a6-9fe5-227f-109eada73b9c"
+												y: 1
+											}
+											startColorA: {
+												__uuid: "25a0aeff-b7a0-d351-fcc1-79e330855a07"
+												r: 0.55207222700119019
+												g: 0.32859182357788086
+												b: 0.050296284258365631
+											}
+											startColorB: {
+												__uuid: "235bb292-efc1-3f4d-f8ae-e413834a6611"
+												r: 0.99999600648880005
+												g: 0.99999904632568359
+												b: 0.99999988079071045
+											}
+											endColorA: {
+												__uuid: "d65d6dd1-f2c1-2f61-f105-4350824249e5"
+												r: 0.19042640924453735
+												g: 0.12340861558914185
+												b: 0.87455534934997559
+											}
+											endColorB: {
+												__uuid: "672eb394-0fa6-4ce9-2265-765b44a98e12"
+												r: 0.18633247911930084
+												g: 0.066446021199226379
+												b: 0.25730037689208984
+											}
+											imageSequence: {
+												__uuid: "7df2d679-a680-5552-b719-2c9806e1cc69"
+												rowCount: 3
+												columnCount: 3
+												frameRate: 9
+											}
+											acceleration: {
+												__uuid: "fe151952-8aef-aed4-9723-b1d98e20fba2"
+											}
+											attractionCenter: {
+												__uuid: "2b3571f9-a398-e639-c338-6d3f232f0e53"
+												x: 1
+												y: 1
+											}
+											vortexDirection: {
+												__uuid: "bef93129-2453-319a-c3b5-15ed08a0ca07"
+												y: 1
+											}
+										}
+									}
+								]
+							}
+						]
+						child_sort_values: [
+							{
+								__uuid: "fafbeaad-97fd-4b13-ac22-cb596e773af0"
+								child: "f6d463b5-0334-ed16-fe1a-856a0180bd64"
+							}
+						]
+					}
+					{
+						__uuid: "88949950-b37d-e10a-4577-140003cd3ffb"
+						__prototype_type: "tm_entity"
+						__prototype_uuid: "d57a1fbc-60c3-03e7-98d7-a397590a047a"
+						components: [
+							{
+								__type: "tm_compute_simulation_component"
+								__uuid: "aecee6d5-d15c-c04e-3ff7-0241401f13db"
+							}
+						]
+					}
+				]
+			}
+		]
+		child_sort_values: [
+			{
+				__uuid: "e839b747-902d-cb3c-c732-681509ed7705"
+				child: "e3dfcba0-505e-1172-d4d5-14a239917156"
+			}
+		]
+	}
+]
+child_sort_values: [
+	{
+		__uuid: "3ac07383-23ad-0c12-23ed-7ae02d3711c0"
+		child: "85f1236d-d1ee-5ac6-524d-3bb450cb2d34"
+	}
+]
+__asset_uuid: "2f604620-1f6a-f13c-8a54-2e60cba37f47"
