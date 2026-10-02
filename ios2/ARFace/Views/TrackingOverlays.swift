@@ -50,3 +50,31 @@ struct BlendShapeDebugView: View {
         }
     }
 }
+
+struct CameraDebugView: View {
+    let tracker: FaceTracker
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.2)) { _ in
+            Group {
+                if let data = tracker.cameraThumbnail(), let image = UIImage(data: data) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Image(systemName: "camera")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.ultraThinMaterial)
+                }
+            }
+            .frame(width: 120, height: 160)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(.white.opacity(0.35), lineWidth: 1)
+            }
+        }
+    }
+}

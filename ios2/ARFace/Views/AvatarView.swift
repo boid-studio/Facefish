@@ -6,6 +6,7 @@ struct AvatarView: View {
     let tracker: FaceTracker
     let mirrored: Bool
     let showDebug: Bool
+    var showsLoadError = true
 
     @State private var controller: AvatarController?
     @State private var updateSubscription: EventSubscription?
@@ -35,9 +36,10 @@ struct AvatarView: View {
 
                 let model = try await Entity(named: "fish")
                 let controller = AvatarController(model: model)
+                controller.mirrored = mirrored
                 content.add(controller.root)
-                updateSubscription = content.subscribe(to: SceneEvents.Update.self) { _ in
-                    controller.apply(tracker.snapshot())
+                updateSubscription = content.subscribe(to: SceneEvents.Update.self) { event in
+                    controller.apply(tracker.snapshot(), deltaTime: event.deltaTime)
                 }
                 self.controller = controller
             } catch {
@@ -47,7 +49,7 @@ struct AvatarView: View {
             controller?.mirrored = mirrored
         }
         .overlay {
-            if let loadError {
+            if showsLoadError, let loadError {
                 ContentUnavailableView("No avatar", systemImage: "person.crop.circle.badge.exclamationmark", description: Text(loadError))
             } else if showDebug, let controller {
                 TimelineView(.periodic(from: .now, by: 0.1)) { _ in

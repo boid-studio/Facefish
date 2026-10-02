@@ -1,4 +1,5 @@
 import ARKit
+import Foundation
 import OSLog
 import RealityKit
 
@@ -6,7 +7,13 @@ import RealityKit
 final class AvatarController {
     let root = Entity()
     /// Mirror mode: the avatar behaves like a reflection of the user.
-    var mirrored = true
+    var mirrored = true {
+        didSet {
+            if mirrored != oldValue {
+                resetSmoothing()
+            }
+        }
+    }
 
     private struct Binding {
         let setIndex: Int
@@ -20,6 +27,8 @@ final class AvatarController {
     }
 
     private var targets: [Target] = []
+    private var smoothedRotation: simd_quatf?
+    private var smoothedBlendShapes: [ARFaceAnchor.BlendShapeLocation: Float] = [:]
     private let logger = Logger(subsystem: "ARFace", category: "Avatar")
 
     private(set) var boundLocations: Set<ARFaceAnchor.BlendShapeLocation> = []
@@ -38,21 +47,62 @@ final class AvatarController {
         }
     }
 
-    func apply(_ state: FaceState?) {
-        guard let state, state.isTracked else { return }
+    func apply(_ state: FaceState?, deltaTime: TimeInterval) {
+        guard let state, state.isTracked else {
+            resetSmoothing()
+            return
+        }
+        guard deltaTime.isFinite, deltaTime > 0 else { return }
+        if deltaTime > 0.25 {
+            resetSmoothing()
+        }
 
-        let q = state.headRotation.vector
-        root.orientation = mirrored ? simd_quatf(vector: [q.x, -q.y, -q.z, q.w]) : state.headRotation
-        appliedJawOpen = state.blendShapes[.jawOpen] ?? 0
+        let rotation = state.headRotation.vector
+        let targetRotation = simd_normalize(mirrored
+            ? simd_quatf(vector: [rotation.x, -rotation.y, -rotation.z, rotation.w])
+            : state.headRotation)
+        let headAlpha = Self.smoothingFactor(deltaTime: deltaTime, timeConstant: 0.04)
+        let displayedRotation = smoothedRotation.map {
+            simd_slerp($0, targetRotation, headAlpha)
+        } ?? targetRotation
+        smoothedRotation = displayedRotation
+        root.orientation = displayedRotation
+
+        for location in boundLocations.union([.jawOpen]) {
+            let source = mirrored ? BlendShapeMapping.mirrored(location) : location
+            let targetWeight = state.blendShapes[source] ?? 0
+            let timeConstant: TimeInterval
+            switch location {
+            case .eyeBlinkLeft, .eyeBlinkRight:
+                timeConstant = 0.012
+            case .jawOpen, .jawForward, .jawLeft, .jawRight,
+                 .mouthClose, .mouthFunnel, .mouthPucker:
+                timeConstant = 0.02
+            default:
+                timeConstant = 0.03
+            }
+            let alpha = Self.smoothingFactor(deltaTime: deltaTime, timeConstant: timeConstant)
+            let previousWeight = smoothedBlendShapes[location] ?? targetWeight
+            smoothedBlendShapes[location] = previousWeight + alpha * (targetWeight - previousWeight)
+        }
+        appliedJawOpen = smoothedBlendShapes[.jawOpen] ?? 0
 
         for target in targets {
             guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
             for binding in target.bindings {
-                let source = mirrored ? BlendShapeMapping.mirrored(binding.location) : binding.location
-                component.weightSet[binding.setIndex].weights[binding.weightIndex] = state.blendShapes[source] ?? 0
+                component.weightSet[binding.setIndex].weights[binding.weightIndex] = smoothedBlendShapes[binding.location] ?? 0
             }
             target.entity.components.set(component)
         }
+    }
+
+    private func resetSmoothing() {
+        smoothedRotation = nil
+        smoothedBlendShapes.removeAll(keepingCapacity: true)
+    }
+
+    private static func smoothingFactor(deltaTime: TimeInterval, timeConstant: TimeInterval) -> Float {
+        Float(1 - exp(-deltaTime / timeConstant))
     }
 
     private func bind(_ entity: Entity, unmatched: inout [String]) {
