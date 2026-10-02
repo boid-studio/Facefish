@@ -14,8 +14,8 @@ export interface PanelCallbacks {
   onCenter(): void;
 }
 
-type NumKey = 'strength' | 'expression' | 'headGain' | 'moveGain' | 'zoom' | 'offsetY' | 'caustics' | 'bubbles' | 'tint';
-type BoolKey = 'mirror' | 'porthole' | 'gestures' | 'idleActions' | 'autoCenter' | 'helmet';
+type NumKey = 'strength' | 'expression' | 'smoothing' | 'lidAngle' | 'headGain' | 'moveGain' | 'zoom' | 'offsetY' | 'caustics' | 'bubbles' | 'tint';
+type BoolKey = 'mirror' | 'porthole' | 'gestures' | 'idleActions' | 'autoCenter' | 'helmet' | 'monitor';
 
 interface RangeControl {
   kind: 'range';
@@ -37,6 +37,8 @@ type Control = RangeControl | ToggleControl;
 const CONTROLS: Control[] = [
   { kind: 'range', key: 'strength', label: 'Action strength', hint: 'How big the laps, nods and wiggles are', min: 0.5, max: 3, step: 0.1 },
   { kind: 'range', key: 'expression', label: 'Expression', hint: 'Exaggerates the tracked face', min: 0.5, max: 2.5, step: 0.1 },
+  { kind: 'range', key: 'smoothing', label: 'Smoothing', hint: 'Lower is snappier; 0 shows tracking raw', min: 0, max: 1, step: 0.05 },
+  { kind: 'range', key: 'lidAngle', label: 'Lid close angle', hint: 'Degrees the eyelid bones turn on a full blink; negative turns the other way', min: -150, max: 150, step: 1 },
   { kind: 'range', key: 'headGain', label: 'Head turn', hint: 'Fish turns with the head; 1 follows exactly', min: 0, max: 2, step: 0.05 },
   { kind: 'range', key: 'moveGain', label: 'Head move', hint: 'Fish swims around the bowl as the head moves inside the helmet', min: 0, max: 3, step: 0.1 },
   { kind: 'toggle', key: 'autoCenter', label: 'Auto-center head', hint: 'Slowly relearns the resting pose; press c to center now' },
@@ -50,6 +52,7 @@ const CONTROLS: Control[] = [
   { kind: 'toggle', key: 'porthole', label: 'Porthole mask', hint: 'Dark round vignette' },
   { kind: 'toggle', key: 'gestures', label: 'Face gestures', hint: 'Tongue out, wide eyes or a long wink fire actions' },
   { kind: 'toggle', key: 'idleActions', label: 'Idle actions', hint: 'Random actions while no one is tracked' },
+  { kind: 'toggle', key: 'monitor', label: 'Key monitor', hint: 'Every incoming Face Cap value; press v' },
 ];
 
 const KEY_NAMES: Record<string, string> = {

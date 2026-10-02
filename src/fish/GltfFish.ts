@@ -32,12 +32,30 @@ export class GltfFish implements Avatar {
   private eyeL: THREE.Object3D | null = null;
   private eyeR: THREE.Object3D | null = null;
   private tail: THREE.Object3D | null = null;
+  /** Eyelid bones (or objects) named Lid.L / Lid.R: blinks turn them about their own X axis. */
+  private lidL: THREE.Object3D | null = null;
+  private lidR: THREE.Object3D | null = null;
+  private readonly lidRest = new Map<THREE.Object3D, THREE.Quaternion>();
+  private readonly lidTurn = new THREE.Quaternion();
+  /** Degrees a lid turns at a full blink. Negative turns the other way. */
+  lidAngle = 100;
   private restRotations = new Map<THREE.Object3D, THREE.Euler>();
   private hasJawShape = false;
   private hasGazeShapes = false;
   /** Where the mouth sits in body space when the model has no Jaw node. */
   private readonly mouthOffset = new THREE.Vector3(0, -0.2, 1.0);
   readonly report: string[] = [];
+
+  /** Face Cap blendshape indices that some mesh in the model has a shape key for. */
+  get shapeKeys(): ReadonlySet<number> {
+    const set = new Set<number>();
+    for (const { map } of this.morphs) {
+      map.forEach((idx, bs) => {
+        if (idx >= 0) set.add(bs);
+      });
+    }
+    return set;
+  }
 
   static async load(url: string): Promise<GltfFish> {
     const gltf = await new GLTFLoader().loadAsync(url);
@@ -121,6 +139,9 @@ export class GltfFish implements Avatar {
       if (!this.eyeL && /^(eyel|eye_l|eyeleft|lefteye|eye\.l)$/.test(name)) this.eyeL = obj;
       if (!this.eyeR && /^(eyer|eye_r|eyeright|righteye|eye\.r)$/.test(name)) this.eyeR = obj;
       if (!this.tail && /^(tail|tailfin)$/.test(name)) this.tail = obj;
+      // three.js drops the dot from node names ("Lid.L" arrives as "LidL").
+      if (!this.lidL && /^lid[._]?l$/.test(name)) this.lidL = obj;
+      if (!this.lidR && /^lid[._]?r$/.test(name)) this.lidR = obj;
 
       if (obj instanceof THREE.Mesh && obj.morphTargetDictionary && obj.morphTargetInfluences) {
         const map = new Int16Array(BLENDSHAPE_COUNT).fill(-1);
@@ -155,6 +176,12 @@ export class GltfFish implements Avatar {
     for (const obj of [this.head, this.jaw, this.eyeL, this.eyeR, this.tail]) {
       if (obj) this.restRotations.set(obj, obj.rotation.clone());
     }
+    for (const lid of [this.lidL, this.lidR]) {
+      if (lid) this.lidRest.set(lid, lid.quaternion.clone());
+    }
+    if (this.lidL || this.lidR) {
+      this.report.push(`lids: ${this.lidL?.name ?? '-'}/${this.lidR?.name ?? '-'} (turn about their own X on blink)`);
+    }
     if (!this.head) this.head = scene;
 
     this.report.push(
@@ -187,7 +214,10 @@ export class GltfFish implements Avatar {
       const rest = this.restRotations.get(this.head);
       const e = new THREE.Euler(pose.headPitch, pose.headYaw, pose.headRoll, 'YXZ');
       if (rest) {
-        this.head.quaternion.setFromEuler(rest).multiply(new THREE.Quaternion().setFromEuler(e));
+        // Turn about the parent's (upright) axes, not the Head's own: a Blender
+        // Head is often rotated 90° on X, and turning in its own axes made a
+        // head turn roll the fish.
+        this.head.quaternion.setFromEuler(e).multiply(new THREE.Quaternion().setFromEuler(rest));
       } else {
         this.head.rotation.copy(e);
       }
@@ -207,6 +237,18 @@ export class GltfFish implements Avatar {
         const rest = this.restRotations.get(this.eyeR)!;
         this.eyeR.rotation.set(rest.x + pose.eyePitchR, rest.y + pose.eyeYawR, rest.z);
       }
+    }
+    // Lids: a blink turns each lid about its own X axis by up to lidAngle; a
+    // squint closes it part way, wide eyes open it a little past rest.
+    // `weights` are already mirrored, smoothed and gained, so _L is the fish's left.
+    for (const [lid, blink, squint, wide] of [
+      [this.lidL, BS_BLINK_L, BS_SQUINT_L, BS_WIDE_L],
+      [this.lidR, BS_BLINK_R, BS_SQUINT_R, BS_WIDE_R],
+    ] as const) {
+      if (!lid) continue;
+      const amount = Math.max(-0.3, Math.min(1, weights[blink] + 0.35 * weights[squint] - 0.25 * weights[wide]));
+      this.lidTurn.setFromAxisAngle(X_AXIS, THREE.MathUtils.degToRad(this.lidAngle * amount));
+      lid.quaternion.copy(this.lidRest.get(lid)!).multiply(this.lidTurn);
     }
     if (this.tail) {
       const rest = this.restRotations.get(this.tail)!;
@@ -231,6 +273,14 @@ function normalise(key: string): string {
   // Blender-style suffixes: "eyeBlink.L", "eyeBlink-L", "eyeBlink L" → "eyeblink_l".
   return key.trim().toLowerCase().replace(/[.\-\s]+([lr])$/, '_$1');
 }
+
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+const BS_BLINK_L = BLENDSHAPE_NAMES.indexOf('eyeBlink_L');
+const BS_BLINK_R = BLENDSHAPE_NAMES.indexOf('eyeBlink_R');
+const BS_SQUINT_L = BLENDSHAPE_NAMES.indexOf('eyeSquint_L');
+const BS_SQUINT_R = BLENDSHAPE_NAMES.indexOf('eyeSquint_R');
+const BS_WIDE_L = BLENDSHAPE_NAMES.indexOf('eyeWide_L');
+const BS_WIDE_R = BLENDSHAPE_NAMES.indexOf('eyeWide_R');
 
 const NORMALISED = new Map<string, number>();
 BLENDSHAPE_NAMES.forEach((name, i) => {

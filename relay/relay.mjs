@@ -12,6 +12,10 @@
  * --fake generates synthetic Face Cap data at 60 fps so you can develop
  * without an iPhone.
  *
+ * Recording: {"type":"record","action":"start"|"stop"|"toggle"} on the
+ * WebSocket, or OSC "/record" (toggle), "/record/start", "/record/stop", saves
+ * takes to recordings/ (see recorder.mjs and blender/import_take.py).
+ *
  * Control channel: the same WebSocket carries JSON text frames such as
  * {"type":"action","name":"lap"}. They come from
  *   - OSC on the UDP port: address "/action" with a string argument, or
@@ -24,6 +28,7 @@ import dgram from 'node:dgram';
 import http from 'node:http';
 import os from 'node:os';
 import { WebSocketServer } from 'ws';
+import { TakeRecorder } from './recorder.mjs';
 
 const args = parseArgs(process.argv.slice(2));
 const UDP_PORT = Number(args.udp ?? process.env.FACECAP_UDP_PORT ?? 8080);
@@ -50,9 +55,22 @@ let packetsOut = 0;
 wss.on('connection', (ws, req) => {
   clients.add(ws);
   console.log(`[ws] client connected from ${req.socket.remoteAddress} (${clients.size} total)`);
+  ws.send(JSON.stringify(recorder.status()));
   ws.on('message', (data, isBinary) => {
-    // Text frames are control messages; pass them on to everyone else.
-    if (!isBinary) sendControl(data.toString(), ws);
+    if (isBinary) return;
+    const text = data.toString();
+    // {"type":"record","action":"start"|"stop"|"toggle"} is for the relay itself.
+    try {
+      const msg = JSON.parse(text);
+      if (msg && msg.type === 'record') {
+        handleRecord(msg.action);
+        return;
+      }
+    } catch {
+      /* not JSON; sendControl ignores it too */
+    }
+    // Other text frames are control messages; pass them on to everyone else.
+    sendControl(text, ws);
   });
   ws.on('close', () => {
     clients.delete(ws);
@@ -61,6 +79,16 @@ wss.on('connection', (ws, req) => {
   ws.on('error', () => {});
 });
 httpServer.listen(WS_PORT);
+
+const recorder = new TakeRecorder();
+
+/** Start, stop or toggle a take; every app hears the new state. */
+function handleRecord(action) {
+  const wantStart = action === 'start' || (action !== 'stop' && !recorder.recording);
+  const status = wantStart ? recorder.start() : recorder.stop();
+  const text = JSON.stringify(status);
+  for (const ws of clients) if (ws.readyState === ws.OPEN) ws.send(text);
+}
 
 function broadcast(buf) {
   for (const ws of clients) {
@@ -114,13 +142,60 @@ function align4(n) {
 // The UDP port is always open: Face Cap data plus OSC "/action" control
 // messages. In --fake mode real Face Cap packets are ignored so the two
 // streams don't fight.
+// Face Cap sends every value as its own datagram (~57 per capture frame,
+// ~2000/s). Forwarding them one by one floods the WebSocket and the page's
+// event loop, which shows up as lag. Datagrams that arrive together are
+// wrapped into one OSC bundle and sent as a single message; the app decodes
+// bundles (nested too) exactly like loose messages. This waits at most for
+// the end of the current I/O pass, well under a millisecond.
+let pending = [];
+let flushScheduled = false;
+
+function queuePacket(msg) {
+  pending.push(msg);
+  if (!flushScheduled) {
+    flushScheduled = true;
+    setImmediate(flushPending);
+  }
+}
+
+function flushPending() {
+  flushScheduled = false;
+  if (pending.length === 0) return;
+  const buf = pending.length === 1 ? pending[0] : oscBundle(pending);
+  pending = [];
+  broadcast(buf);
+}
+
 const udp = dgram.createSocket('udp4');
 udp.on('message', (msg) => {
+  if (handleOscRecord(msg)) return;
   if (handleOscControl(msg)) return;
   if (FAKE) return;
   packetsIn++;
-  broadcast(msg);
+  recorder.feed(msg);
+  queuePacket(msg);
 });
+
+/** OSC "/record", "/record start|stop" or "/record/start|stop" from a show controller. */
+function handleOscRecord(msg) {
+  if (msg.length < 8 || msg[0] !== 0x2f || msg.toString('utf8', 0, 7) !== '/record') return false;
+  const end = msg.indexOf(0);
+  const address = msg.toString('utf8', 0, end === -1 ? msg.length : end);
+  let action = address.slice('/record'.length).replace(/^\//, '');
+  if (!action) {
+    const tagsStart = align4(end + 1);
+    const tagsEnd = msg.indexOf(0, tagsStart);
+    const tags = msg.toString('utf8', tagsStart, tagsEnd === -1 ? msg.length : tagsEnd);
+    if (tags[1] === 's') {
+      const argStart = align4(tagsEnd + 1);
+      const strEnd = msg.indexOf(0, argStart);
+      action = msg.toString('utf8', argStart, strEnd === -1 ? msg.length : strEnd);
+    }
+  }
+  handleRecord(action || 'toggle');
+  return true;
+}
 udp.on('error', (err) => {
   console.error('[udp] error', err);
   process.exit(1);
@@ -142,6 +217,7 @@ console.log('');
 console.log('Trigger actions from:');
 for (const ip of lanAddresses()) console.log(`    http://${ip}:${WS_PORT}/   (buttons + keyboard)`);
 console.log(`    OSC "/action lap" or "/action/lap" to UDP port ${UDP_PORT}`);
+console.log(`Record takes (saved to recordings/): r or the panel in the app, or OSC "/record" to UDP port ${UDP_PORT}`);
 console.log('');
 
 setInterval(() => {
@@ -307,6 +383,8 @@ function startFake() {
     messages.push(oscMessage('/ELR', [0, 0]));
     messages.push(oscMessage('/ERR', [0, 0]));
     packetsIn++;
-    broadcast(oscBundle(messages));
+    const bundle = oscBundle(messages);
+    recorder.feed(bundle);
+    broadcast(bundle);
   }, 1000 / 60);
 }

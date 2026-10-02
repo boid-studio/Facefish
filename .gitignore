@@ -9,3 +9,6 @@ ios/App/public/
 __pycache__/
 *.blend1
 *.psd
+
+# Face Cap takes recorded by the relay (import with blender/import_take.py)
+recordings/
