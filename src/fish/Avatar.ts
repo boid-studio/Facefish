@@ -22,6 +22,10 @@ export interface Avatar {
   readonly clips?: string[];
   /** Play a clip once; resolves when it finishes. */
   playClip?(name: string): Promise<void>;
+  /** Degrees an eyelid bone (Lid.L / Lid.R) turns at a full blink, for models that have them. */
+  lidAngle?: number;
+  /** Face Cap blendshape indices the model has shape keys for (morph-target avatars only). */
+  readonly shapeKeys?: ReadonlySet<number>;
   /** World position of the mouth, for bubbles. Writes into and returns `target`. */
   mouthPosition?(target: THREE.Vector3): THREE.Vector3;
 }

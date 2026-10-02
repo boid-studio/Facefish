@@ -10,7 +10,9 @@ import { GltfFish } from './fish/GltfFish';
 import { DEFAULT_MAPPING, FaceToFishMapper } from './fish/mapping';
 import { Stage } from './scene';
 import { Hud } from './ui/hud';
+import { KeyMonitor } from './ui/monitor';
 import { Panel } from './ui/panel';
+import { RecordingUi } from './ui/recording';
 
 const STORAGE_KEY = 'facefish.relayUrl';
 const DEFAULT_MODEL = './models/fish.glb';
@@ -60,6 +62,8 @@ async function main(): Promise<void> {
   stage.setFraming(config.zoom, config.offsetY);
   const fish = await loadAvatar();
   stage.scene.add(fish.root);
+  const monitor = new KeyMonitor();
+  monitor.setModelShapes(fish.shapeKeys ?? null);
   // Optional photo of the real helmet interior; the procedural brass stays otherwise.
   const helmetUrl = new URLSearchParams(location.search).get('helmet_tex') ?? DEFAULT_HELMET_TEXTURE;
   void stage.helmet.loadTexture(helmetUrl).then((ok) => {
@@ -74,6 +78,7 @@ async function main(): Promise<void> {
     moveGain: config.moveGain,
     autoCenter: config.autoCenter ? DEFAULT_MAPPING.autoCenter : 0,
     expressionGain: config.expression,
+    smoothing: config.smoothing,
   });
   const hud = new Hud(defaultRelayUrl());
   hud.setMode(config.hud);
@@ -100,6 +105,8 @@ async function main(): Promise<void> {
     mapper.config.moveGain = config.moveGain;
     mapper.config.autoCenter = config.autoCenter ? DEFAULT_MAPPING.autoCenter : 0;
     mapper.config.expressionGain = config.expression;
+    mapper.config.smoothing = config.smoothing;
+    if (fish.lidAngle !== undefined) fish.lidAngle = config.lidAngle;
     actions.strength = config.strength;
     stage.setFraming(config.zoom, config.offsetY);
     stage.setCaustics(config.caustics);
@@ -107,6 +114,7 @@ async function main(): Promise<void> {
     stage.setTint(config.tint);
     stage.setHelmet(config.helmet);
     document.body.classList.toggle('porthole', config.porthole);
+    monitor.setVisible(config.monitor);
     hud.setMode(config.hud);
     gestures = config.gestures ? (gestures ?? makeGestures()) : null;
   }
@@ -128,11 +136,18 @@ async function main(): Promise<void> {
       if (key === 'h') hud.toggle();
       if (key === 'p') panel.toggle();
       if (key === 'c') mapper.centerHead();
+      if (key === 'r') recording.toggle();
+      if (key === 'v') {
+        config.monitor = !config.monitor;
+        applyConfig();
+        panel.refresh();
+      }
       if (key === 'Escape') panel.hide();
     },
   );
 
   let source: FaceSource | null = null;
+  const recording = new RecordingUi((msg) => source?.send?.(msg) ?? false);
   let packetsThisSecond = 0;
   let packetRate = 0;
   let rateTimer = 0;
@@ -155,6 +170,7 @@ async function main(): Promise<void> {
     };
     source.onMessage = (msg) => {
       if (msg.type === 'action' && typeof msg.name === 'string') actions.trigger(msg.name);
+      if (msg.type === 'record') recording.handle(msg);
     };
     source.start();
   }
@@ -182,13 +198,16 @@ async function main(): Promise<void> {
     stage.update(dt, time);
     stage.render(time);
 
-    rateTimer += dt;
-    if (rateTimer >= 1) {
-      packetRate = packetsThisSecond / rateTimer;
+    // Wall-clock, not the clamped frame dt: while the tab is in the background
+    // frames stop but packets keep arriving.
+    if (now - rateTimer >= 1000) {
+      packetRate = rateTimer > 0 ? (packetsThisSecond * 1000) / (now - rateTimer) : 0;
       packetsThisSecond = 0;
-      rateTimer = 0;
+      rateTimer = now;
     }
     const live = mapper.isLive;
+    monitor.setRate(packetRate);
+    monitor.update(decoder.frame, mapper.weights, live, dt);
     if (live || wasLive) hud.setLive(live, packetRate);
     if (live && !wasLive) hud.trackingStarted();
     if (wasLive && !live && source) hud.setSource(source.state);

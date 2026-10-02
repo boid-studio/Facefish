@@ -14,6 +14,12 @@
       "port": 8765
     },
     {
+      "name": "relay-test",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["relay/relay.mjs", "--udp", "9080", "--ws", "9765"],
+      "port": 9765
+    },
+    {
       "name": "dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],

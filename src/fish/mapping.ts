@@ -40,9 +40,14 @@ export interface MappingConfig {
   eyeRange: number;
   /** Seconds without packets before the fish starts idling. */
   idleAfter: number;
-  /** Smoothing rates in 1/s. Higher is snappier. */
+  /** Smoothing rates in 1/s at smoothing 1. Higher is snappier. */
   rateFast: number;
   rateSlow: number;
+  /**
+   * Overall smoothing: 0 shows the tracked values raw (snappiest, can look
+   * jittery), 1 is the original soft feel. The rates are divided by it.
+   */
+  smoothing: number;
 }
 
 export const DEFAULT_MAPPING: MappingConfig = {
@@ -58,6 +63,7 @@ export const DEFAULT_MAPPING: MappingConfig = {
   idleAfter: 1.5,
   rateFast: 28,
   rateSlow: 14,
+  smoothing: 0.3,
 };
 
 /** Keys that need to react quickly (blinks, jaw). */
@@ -154,14 +160,18 @@ export class FaceToFishMapper {
     else this.idle(time, dt);
     this.target.signal = live ? 1 : 0;
 
-    const kFast = 1 - Math.exp(-dt * this.config.rateFast);
-    const kSlow = 1 - Math.exp(-dt * this.config.rateSlow);
+    const s = this.config.smoothing;
+    const kFast = s <= 0 ? 1 : 1 - Math.exp((-dt * this.config.rateFast) / s);
+    const kSlow = s <= 0 ? 1 : 1 - Math.exp((-dt * this.config.rateSlow) / s);
     for (const key of POSE_KEYS) {
       const k = FAST_KEYS.has(key) ? kFast : kSlow;
       this.pose[key] += (this.target[key] - this.pose[key]) * k;
     }
+    // Morph-target avatars: while tracking, every shape follows at the fast
+    // rate, so vowels (funnel, pucker, smile) keep up with the jaw. The idle
+    // animation keeps the softer split.
     for (let i = 0; i < BLENDSHAPE_COUNT; i++) {
-      const k = FAST_WEIGHTS.has(i) ? kFast : kSlow;
+      const k = live || FAST_WEIGHTS.has(i) ? kFast : kSlow;
       this.weights[i] += (this.targetWeights[i] - this.weights[i]) * k;
     }
     return this.pose;

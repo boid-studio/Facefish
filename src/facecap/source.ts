@@ -18,6 +18,8 @@ export interface FaceSource {
   onStateChange: ((state: SourceState, detail?: string) => void) | null;
   start(): void;
   stop(): void;
+  /** Send a JSON control message to the relay; false when not connected. */
+  send?(msg: ControlMessage): boolean;
 }
 
 export interface WebSocketSourceOptions {
@@ -61,6 +63,12 @@ export class WebSocketSource implements FaceSource {
       this.ws = null;
     }
     this.setState('closed');
+  }
+
+  send(msg: ControlMessage): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(JSON.stringify(msg));
+    return true;
   }
 
   private setState(state: SourceState, detail?: string): void {

@@ -36,6 +36,12 @@ export interface AppConfig {
   strength: number;
   /** Exaggeration of the tracked face (1 = as tracked). */
   expression: number;
+  /** Smoothing of the tracked face and head (0 = raw, 1 = soft). */
+  smoothing: number;
+  /** Overlay listing every incoming Face Cap value. */
+  monitor: boolean;
+  /** Degrees the eyelid bones turn at a full blink (negative turns the other way). */
+  lidAngle: number;
   /** Strength of the light caustics (1 = subtle). */
   caustics: number;
   /** Amount of bubbles from the fish's movement and mouth (0 = off). */
@@ -88,6 +94,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   idleActions: false,
   strength: 1.5,
   expression: 1.3,
+  smoothing: 0.3,
+  monitor: false,
+  lidAngle: 100,
   caustics: 1.8,
   bubbles: 1,
   tint: 0.35,
@@ -126,6 +135,9 @@ export function loadConfig(): AppConfig {
   cfg.idleActions = bool('idleActions', cfg.idleActions);
   cfg.strength = num('strength', cfg.strength);
   cfg.expression = num('expr', cfg.expression);
+  cfg.smoothing = num('smooth', cfg.smoothing);
+  cfg.monitor = bool('monitor', cfg.monitor);
+  cfg.lidAngle = num('lid', cfg.lidAngle);
   cfg.caustics = num('caustics', cfg.caustics);
   cfg.bubbles = num('bubbles', cfg.bubbles);
   cfg.tint = num('tint', cfg.tint);

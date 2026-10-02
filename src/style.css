@@ -324,3 +324,183 @@ kbd {
   color: var(--fg);
   font: inherit;
 }
+
+/* Key monitor: every incoming Face Cap value (press v). */
+#monitor {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  max-height: calc(100% - 130px);
+  width: min(320px, calc(100vw - 24px));
+  overflow-y: auto;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(4, 16, 28, 0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 11px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  z-index: 1;
+}
+#monitor[hidden] {
+  display: none;
+}
+@media (min-width: 900px) {
+  #monitor {
+    width: 600px;
+  }
+  .monitor-list {
+    columns: 2;
+    column-gap: 18px;
+  }
+}
+.monitor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+}
+.monitor-hint {
+  opacity: 0.5;
+  font-size: 11px;
+}
+.monitor-summary {
+  margin: 2px 0 6px;
+  opacity: 0.75;
+}
+.monitor-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 6px;
+  opacity: 0.7;
+}
+.monitor-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 8px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  border-radius: 2px;
+}
+.lg-fill {
+  background: var(--ok);
+}
+.lg-peak {
+  background: rgba(61, 220, 132, 0.35);
+}
+.lg-applied {
+  width: 2px !important;
+  background: #fff;
+}
+.lg-dim {
+  background: rgba(219, 233, 245, 0.25);
+}
+.monitor-pose {
+  margin: 0 0 6px;
+  font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  opacity: 0.8;
+}
+.monitor-group {
+  break-after: avoid;
+  margin: 6px 0 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+.monitor-row {
+  display: grid;
+  grid-template-columns: 112px 1fr 30px;
+  align-items: center;
+  gap: 6px;
+  height: 15px;
+  break-inside: avoid;
+}
+.monitor-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.monitor-track {
+  position: relative;
+  height: 7px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.monitor-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform: scaleX(0);
+  background: var(--ok);
+}
+.monitor-peak,
+.monitor-applied {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  margin-left: -1px;
+}
+.monitor-peak {
+  width: 3px;
+  background: rgba(61, 220, 132, 0.45);
+}
+.monitor-applied {
+  background: #fff;
+}
+.monitor-value {
+  text-align: right;
+  opacity: 0.6;
+}
+.monitor-row.active .monitor-value {
+  opacity: 1;
+}
+.monitor-row.off-model {
+  opacity: 0.38;
+}
+.monitor-row.off-model .monitor-fill {
+  background: rgba(219, 233, 245, 0.6);
+}
+.monitor-row.off-model .monitor-applied {
+  display: none;
+}
+
+/* Recording a take (press r). */
+#panel-record {
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(27, 74, 107, 0.9);
+  color: #fff;
+  font: 600 15px/1.2 inherit;
+}
+#panel-record small {
+  margin-left: 6px;
+  font-weight: 500;
+  opacity: 0.65;
+}
+#panel-record.recording {
+  background: var(--bad);
+}
+#rec-badge {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 92, 92, 0.9);
+  color: #fff;
+  font: 600 13px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+  font-variant-numeric: tabular-nums;
+  z-index: 3;
+}
+#rec-badge[hidden] {
+  display: none;
+}
