@@ -70,6 +70,25 @@ void causticSurface(realitykit::surface_parameters params) {
     surface.set_opacity(half(material.opacity_scale()));
 }
 
+// Unlit clear bubble: only a sharp sun highlight and a faint fresnel rim are visible; tint comes from base_color_tint.
+[[visible]]
+void bubbleSurface(realitykit::surface_parameters params) {
+    float3 normal = normalize(params.geometry().normal());
+    float3 view = normalize(params.geometry().view_direction());
+    float3 sun = normalize(float3(0.1, 1.0, 0.25));
+
+    float nv = saturate(dot(normal, view));
+    float rim = pow(1.0 - nv, 3.0) * 0.45;
+    float spec = pow(saturate(dot(normal, normalize(sun + view))), 90.0);
+
+    half3 tint = half3(params.material_constants().base_color_tint());
+    half3 color = tint * half(rim + spec * 4.0);
+
+    params.surface().set_base_color(color);
+    params.surface().set_emissive_color(color);
+    params.surface().set_opacity(half(saturate(rim + spec)));
+}
+
 // Unlit sea backdrop: depth gradient, slanted god rays and a shimmering surface band at the top.
 [[visible]]
 void backdropSurface(realitykit::surface_parameters params) {

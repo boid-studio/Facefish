@@ -14,3 +14,4 @@ ios2/Packages/RealityKitContent/.build
 ios/Packages/RealityKitContent/.build
 ios/build/dd
 ios/build
+ios/ARFace/Resources/*.usdz

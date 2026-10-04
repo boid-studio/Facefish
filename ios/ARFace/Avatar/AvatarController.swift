@@ -40,6 +40,7 @@ final class AvatarController {
     private static let mouthOpenThreshold: Float = 0.35
     private static let mouthCloseThreshold: Float = 0.15
     private var mouthBubbles: Entity?
+    private var mouthBubbleSpheres: BubbleSphereSystem?
     private var mouthIsOpen = false
 
     init(model: Entity, targetSize: Float = 0.25) {
@@ -57,9 +58,21 @@ final class AvatarController {
         if let head = model.findEntity(named: "Head") {
             let bubbles = Entity()
             bubbles.position = Self.mouthLocalPosition
-            bubbles.components.set(Self.mouthBubbleEmitter())
             head.addChild(bubbles)
             mouthBubbles = bubbles
+            mouthBubbleSpheres = BubbleSphereSystem(
+                parent: bubbles,
+                capacity: 24,
+                radius: 0.006,
+                color: UIColor(red: 0.85, green: 0.97, blue: 1, alpha: 0.85),
+                lifeSpan: 0.8,
+                lifeVariation: 0.3,
+                speed: 0.1,
+                speedVariation: 0.05,
+                acceleration: [0, 0.05, 0],
+                damping: 0.3,
+                spawnRadius: [0.015, 0.015, 0.015]
+            )
         }
     }
 
@@ -102,6 +115,7 @@ final class AvatarController {
             smoothedBlendShapes[location] = previousWeight + alpha * (targetWeight - previousWeight)
         }
         appliedJawOpen = smoothedBlendShapes[.jawOpen] ?? 0
+        mouthBubbleSpheres?.update(deltaTime: deltaTime)
         updateMouthBubbles(jawOpen: appliedJawOpen)
 
         for target in targets {
@@ -123,39 +137,10 @@ final class AvatarController {
     private func updateMouthBubbles(jawOpen: Float) {
         if jawOpen > Self.mouthOpenThreshold, !mouthIsOpen {
             mouthIsOpen = true
-            guard var component = mouthBubbles?.components[ParticleEmitterComponent.self] else { return }
-            component.burst()
-            mouthBubbles?.components.set(component)
+            mouthBubbleSpheres?.emit(count: 10 + Int.random(in: 0...4))
         } else if jawOpen < Self.mouthCloseThreshold {
             mouthIsOpen = false
         }
-    }
-
-    private static func mouthBubbleEmitter() -> ParticleEmitterComponent {
-        var component = ParticleEmitterComponent()
-        component.emitterShape = .sphere
-        component.emitterShapeSize = [0.015, 0.015, 0.015]
-        component.birthLocation = .volume
-        component.birthDirection = .world
-        component.emissionDirection = [0, 1, 0.5]
-        component.speed = 0.1
-        component.speedVariation = 0.05
-        component.burstCount = 10
-        component.burstCountVariation = 4
-
-        var particles = component.mainEmitter
-        particles.birthRate = 0
-        particles.lifeSpan = 0.8
-        particles.lifeSpanVariation = 0.3
-        particles.size = 0.006
-        particles.sizeVariation = 0.004
-        particles.acceleration = [0, 0.05, 0]
-        particles.dampingFactor = 0.3
-        particles.color = .constant(.single(UIColor(red: 0.85, green: 0.97, blue: 1, alpha: 0.85)))
-        particles.opacityCurve = .gradualFadeInOut
-        particles.blendMode = .additive
-        component.mainEmitter = particles
-        return component
     }
 
     private static func smoothingFactor(deltaTime: TimeInterval, timeConstant: TimeInterval) -> Float {

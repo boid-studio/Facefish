@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "blender": {
+			"command": "/Users/mikaelsundgren/.local/bin/uv",
+			"args": [
+				"--directory",
+				"/Users/mikaelsundgren/blender_mcp/mcp",
+				"run",
+				"blender-mcp"
+			],
+			"env": {
+				"BLENDER_MCP_PORT": "9877"
+			}
+		}
+  }
+}
