@@ -15,3 +15,4 @@ ios/Packages/RealityKitContent/.build
 ios/build/dd
 ios/build
 ios/ARFace/Resources/*.usdz
+ARFace/Resources/fish_test.usdz
