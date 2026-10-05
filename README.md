@@ -11,18 +11,33 @@ for a square panel that squeezes the entire incoming image to fit.
 
 This compensation applies to all external displays; it assumes a square panel
 with full-image stretching, not cropping or letterboxing. It adapts to window
-size changes and does not change the HDMI signal resolution or the phone view.
+size changes and does not change the HDMI signal resolution.
 
-## External display diagnostics
+While an external display is connected, the phone shows a lightweight connection
+screen instead of rendering a second 3D scene. Face tracking, Mirror/Debug controls,
+tracking status, camera preview, and display diagnostics remain available on the
+phone. The phone's avatar rendering resumes automatically on disconnect.
+Scene update subscriptions and debug animations are stopped when an avatar view
+is removed. External rendering quality and square compensation are unchanged.
 
-When an external display is connected, enable **Debug** on the phone to show
-display diagnostics on the phone's main display, above the controls. The scrollable
-panel refreshes once per second
-and shows screen and scene dimensions, native pixel dimensions and aspect ratio,
-display scales, square canvas size and horizontal pre-stretch, maximum refresh
-rate, current/preferred/available modes, and
-overscan settings. Disable **Debug** or disconnect the display to hide it.
-The connected display continues showing only the avatar, without debug overlays.
+## Debug inspector
+
+Enable **Debug** on the phone to open the debug inspector: a trailing column on
+iPad, or a resizable sheet on iPhone. While debug is on, a small camera preview
+floats in the top-trailing corner. The inspector has collapsible sections, and
+their expanded state is remembered between launches:
+
+- **Tracking**: tracking status/errors and the top N blend shapes (N adjustable).
+- **Avatar**: where the avatar is rendered, bound blend-shape targets, applied jawOpen.
+- **Animations**: filter, play once, loop, and stop all avatar animations. When an
+  external display is connected, this drives the avatar on that display.
+- **External display** (only while connected): screen and scene dimensions,
+  native pixel dimensions and aspect ratio, display scales, square canvas size and
+  horizontal pre-stretch, maximum refresh rate, current/preferred/available modes,
+  and overscan settings, refreshed once per second.
+
+Collapsed sections stop refreshing. The external display always shows only the
+avatar, without debug UI.
 
 These values are reported by iOS; they do not reveal the panel's physical aspect
 ratio or any stretching/cropping performed by the display or HDMI adapter.

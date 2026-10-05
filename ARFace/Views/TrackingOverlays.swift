@@ -24,33 +24,6 @@ struct TrackingStatusBanner: View {
     }
 }
 
-struct BlendShapeDebugView: View {
-    let tracker: FaceTracker
-    var count = 12
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
-            let top = (tracker.snapshot()?.blendShapes ?? [:])
-                .sorted { $0.value > $1.value }
-                .prefix(count)
-
-            Grid(alignment: .leading, verticalSpacing: 4) {
-                ForEach(Array(top), id: \.key) { entry in
-                    GridRow {
-                        Text(BlendShapeMapping.displayName(entry.key))
-                            .font(.caption.monospaced())
-                        ProgressView(value: Double(entry.value))
-                            .frame(width: 100)
-                    }
-                }
-            }
-            .padding(10)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
-            .padding()
-        }
-    }
-}
-
 struct CameraDebugView: View {
     let tracker: FaceTracker
 

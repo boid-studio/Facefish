@@ -7,28 +7,32 @@ struct ContentView: View {
     var body: some View {
         Group {
             if tracker.isSupported {
-                AvatarView(tracker: tracker, mirrored: avatarSession.mirrored, showDebug: avatarSession.showDebug)
+                Group {
+                    if avatarSession.externalDisplayScene != nil {
+                        VStack(spacing: 12) {
+                            Image(systemName: "display")
+                                .font(.largeTitle)
+                            Text("External display connected")
+                                .font(.headline)
+                            Text("Face tracking is active. The avatar is rendered only on the external display.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(24)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(.black)
+                    } else {
+                        AvatarView(tracker: tracker, mirrored: avatarSession.mirrored)
+                    }
+                }
                     .ignoresSafeArea()
                     .overlay(alignment: .top) { TrackingStatusBanner(tracker: tracker) }
-                    .overlay(alignment: .topLeading) {
-                        if avatarSession.showDebug { BlendShapeDebugView(tracker: tracker).padding(.top, 48) }
-                    }
                     .overlay(alignment: .topTrailing) {
                         if avatarSession.showDebug { CameraDebugView(tracker: tracker).padding(.top, 48).padding(.trailing, 12) }
                     }
-                    .safeAreaInset(edge: .bottom) {
-                        VStack(spacing: 8) {
-                            if avatarSession.showDebug, let scene = avatarSession.externalDisplayScene {
-                                ScrollView {
-                                    ExternalDisplayDebugView(windowScene: scene)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .frame(maxHeight: 200)
-                                .padding(.horizontal, 12)
-                            }
-                            controls
-                        }
-                    }
+                    .safeAreaInset(edge: .bottom) { controls }
+                    .inspector(isPresented: $avatarSession.showDebug) { DebugInspector() }
             } else {
                 ContentUnavailableView(
                     "Face tracking unavailable",

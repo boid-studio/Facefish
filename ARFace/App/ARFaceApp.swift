@@ -18,6 +18,7 @@ final class AvatarSession {
     static let shared = AvatarSession()
 
     let tracker = FaceTracker()
+    let avatarDebug = AvatarDebugModel()
     var mirrored = true
     var showDebug = false
     var externalDisplayScene: UIWindowScene?
