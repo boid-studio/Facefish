@@ -19,6 +19,8 @@ final class AvatarSession {
 
     let tracker = FaceTracker()
     var mirrored = true
+    var showDebug = false
+    var externalDisplayScene: UIWindowScene?
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {

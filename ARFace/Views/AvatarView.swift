@@ -55,7 +55,7 @@ struct AvatarView: View {
                 let underwater = UnderwaterSceneController(scene: environment)
                 content.add(environment)
 
-                let model = try await Entity(named: "fish_test")
+                let model = try await Entity(named: "fish")
                 animations = model.animations()
                 underwater.applyCaustics(to: model)
                 let controller = AvatarController(model: model)
