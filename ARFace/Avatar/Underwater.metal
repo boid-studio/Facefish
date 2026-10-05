@@ -34,13 +34,10 @@ static half3 caustics(float2 p, float time, float focus) {
 }
 
 // PBR passthrough that adds caustic light on upward-facing surfaces.
-// custom_parameter: x = pattern frequency per metre, y = focus, z = strength, w = distance fog amount.
-[[visible]]
-void causticSurface(realitykit::surface_parameters params) {
+static void causticSurfaceImpl(realitykit::surface_parameters params, float4 custom) {
     constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
     auto tex = params.textures();
     auto material = params.material_constants();
-    float4 custom = params.uniforms().custom_parameter();
 
     float2 uv = params.geometry().uv0();
     uv.y = 1.0 - uv.y;
@@ -68,6 +65,41 @@ void causticSurface(realitykit::surface_parameters params) {
     surface.set_clearcoat(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()));
     surface.set_clearcoat_roughness(tex.clearcoat_roughness().sample(s, uv).r * half(material.clearcoat_roughness_scale()));
     surface.set_opacity(half(material.opacity_scale()));
+}
+
+// custom_parameter: x = pattern frequency per metre, y = focus, z = strength, w = distance fog amount.
+[[visible]]
+void causticSurface(realitykit::surface_parameters params) {
+    causticSurfaceImpl(params, params.uniforms().custom_parameter());
+}
+
+// Fin geometry uses the custom parameter for its ripple, so keep the caustic tuning fixed here.
+[[visible]]
+void causticFinSurface(realitykit::surface_parameters params) {
+    causticSurfaceImpl(params, float4(32.0, 6.0, 1.4, 0.0));
+}
+
+static void finWave(realitykit::geometry_parameters params, float3 axis, float cross) {
+    float4 custom = params.uniforms().custom_parameter();
+    float2 uv = params.geometry().uv1();
+    float u = clamp(uv.x, 0.0, 1.0);
+    float wave = sin(6.2831853 * (u / custom.y - custom.w + uv.y * cross));
+    params.geometry().set_model_position_offset(axis * custom.x * pow(u, custom.z) * wave);
+}
+
+[[visible]]
+void finWaveTail(realitykit::geometry_parameters params) {
+    finWave(params, float3(1.0, 0.0, 0.0), 2.11);
+}
+
+[[visible]]
+void finWaveDorsal(realitykit::geometry_parameters params) {
+    finWave(params, float3(0.0003, -0.0784, 0.9969), 2.11);
+}
+
+[[visible]]
+void finWavePectoral(realitykit::geometry_parameters params) {
+    finWave(params, float3(-0.5769, 0.7816, -0.2373), 2.11);
 }
 
 // Unlit clear bubble: only a sharp sun highlight and a faint fresnel rim are visible; tint comes from base_color_tint.

@@ -31,6 +31,8 @@ final class AvatarController {
     private var smoothedRotation: simd_quatf?
     private var smoothedBlendShapes: [ARFaceAnchor.BlendShapeLocation: Float] = [:]
     private let logger = Logger(subsystem: "ARFace", category: "Avatar")
+    private let finRig: FinRig
+    private var finNeutralRotation: simd_quatf?
 
     private(set) var boundLocations: Set<ARFaceAnchor.BlendShapeLocation> = []
     private(set) var appliedJawOpen: Float = 0
@@ -44,6 +46,7 @@ final class AvatarController {
     private var mouthIsOpen = false
 
     init(model: Entity, targetSize: Float = 0.25) {
+        finRig = FinRig(model: model)
         fit(model, targetSize: targetSize)
         root.addChild(model)
 
@@ -77,60 +80,92 @@ final class AvatarController {
     }
 
     func apply(_ state: FaceState?, deltaTime: TimeInterval) {
-        guard let state, state.isTracked else {
-            resetSmoothing()
-            return
-        }
         guard deltaTime.isFinite, deltaTime > 0 else { return }
         if deltaTime > 0.25 {
             resetSmoothing()
         }
 
-        let rotation = state.headRotation.vector
-        let targetRotation = simd_normalize(mirrored
-            ? simd_quatf(vector: [rotation.x, -rotation.y, -rotation.z, rotation.w])
-            : state.headRotation)
-        let headAlpha = Self.smoothingFactor(deltaTime: deltaTime, timeConstant: 0.04)
-        let displayedRotation = smoothedRotation.map {
-            simd_slerp($0, targetRotation, headAlpha)
-        } ?? targetRotation
-        smoothedRotation = displayedRotation
-        root.orientation = displayedRotation
+        var turn: Float?
+        var nod: Float?
+        var mouthOpen: Float = 0
+        if let state, state.isTracked {
+            let rotation = state.headRotation.vector
+            let targetRotation = simd_normalize(mirrored
+                ? simd_quatf(vector: [rotation.x, -rotation.y, -rotation.z, rotation.w])
+                : state.headRotation)
+            let headAlpha = Self.smoothingFactor(deltaTime: deltaTime, timeConstant: 0.04)
+            let displayedRotation = smoothedRotation.map {
+                simd_slerp($0, targetRotation, headAlpha)
+            } ?? targetRotation
+            smoothedRotation = displayedRotation
+            root.orientation = displayedRotation
 
-        for location in boundLocations.union([.jawOpen]) {
-            let source = mirrored ? BlendShapeMapping.mirrored(location) : location
-            let targetWeight = state.blendShapes[source] ?? 0
-            let timeConstant: TimeInterval
-            switch location {
-            case .eyeBlinkLeft, .eyeBlinkRight:
-                timeConstant = 0.012
-            case .jawOpen, .jawForward, .jawLeft, .jawRight,
-                 .mouthClose, .mouthFunnel, .mouthPucker:
-                timeConstant = 0.02
-            default:
-                timeConstant = 0.03
+            (turn, nod) = finAngles(for: state.headRotation)
+            for location in boundLocations.union([.jawOpen, .mouthFunnel, .mouthClose]) {
+                let source = mirrored ? BlendShapeMapping.mirrored(location) : location
+                let targetWeight = state.blendShapes[source] ?? 0
+                let timeConstant: TimeInterval
+                switch location {
+                case .eyeBlinkLeft, .eyeBlinkRight:
+                    timeConstant = 0.012
+                case .jawOpen, .jawForward, .jawLeft, .jawRight,
+                     .mouthClose, .mouthFunnel, .mouthPucker:
+                    timeConstant = 0.02
+                default:
+                    timeConstant = 0.03
+                }
+                let alpha = Self.smoothingFactor(deltaTime: deltaTime, timeConstant: timeConstant)
+                let previousWeight = smoothedBlendShapes[location] ?? targetWeight
+                smoothedBlendShapes[location] = previousWeight + alpha * (targetWeight - previousWeight)
             }
-            let alpha = Self.smoothingFactor(deltaTime: deltaTime, timeConstant: timeConstant)
-            let previousWeight = smoothedBlendShapes[location] ?? targetWeight
-            smoothedBlendShapes[location] = previousWeight + alpha * (targetWeight - previousWeight)
+            appliedJawOpen = smoothedBlendShapes[.jawOpen] ?? 0
+            let mouthFunnel = smoothedBlendShapes[.mouthFunnel] ?? 0
+            let mouthClose = smoothedBlendShapes[.mouthClose] ?? 0
+            mouthOpen = max(appliedJawOpen, 0.5 * mouthFunnel) * (1 - 0.85 * mouthClose)
+            updateMouthBubbles(jawOpen: appliedJawOpen)
+
+            for target in targets {
+                guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
+                for binding in target.bindings {
+                    component.weightSet[binding.setIndex].weights[binding.weightIndex] = smoothedBlendShapes[binding.location] ?? 0
+                }
+                target.entity.components.set(component)
+            }
+        } else {
+            resetSmoothing()
+            appliedJawOpen = 0
+            updateMouthBubbles(jawOpen: 0)
         }
-        appliedJawOpen = smoothedBlendShapes[.jawOpen] ?? 0
+
         mouthBubbleSpheres?.update(deltaTime: deltaTime)
-        updateMouthBubbles(jawOpen: appliedJawOpen)
-
-        for target in targets {
-            guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
-            for binding in target.bindings {
-                component.weightSet[binding.setIndex].weights[binding.weightIndex] = smoothedBlendShapes[binding.location] ?? 0
-            }
-            target.entity.components.set(component)
-        }
+        finRig.update(turn: turn, nod: nod, mouthOpen: mouthOpen, deltaTime: deltaTime)
     }
 
     private func resetSmoothing() {
         smoothedRotation = nil
         smoothedBlendShapes.removeAll(keepingCapacity: true)
         mouthIsOpen = false
+        finNeutralRotation = nil
+    }
+
+    private func finAngles(for headRotation: simd_quatf) -> (Float, Float) {
+        guard let finNeutralRotation else {
+            self.finNeutralRotation = headRotation
+            return (0, 0)
+        }
+
+        let relativeRotation = simd_normalize(simd_mul(simd_inverse(finNeutralRotation), headRotation))
+        let imaginary = relativeRotation.imag
+        let imaginaryLength = simd_length(imaginary)
+        let angle = 2 * atan2(imaginaryLength, relativeRotation.real)
+        let turnSign: Float = mirrored ? -1 : 1
+        let maximumAngle: Float = 55 * .pi / 180
+        let turn = imaginaryLength > 1e-6 ? angle * imaginary.y / imaginaryLength : 0
+        let nod = imaginaryLength > 1e-6 ? angle * imaginary.x / imaginaryLength : 0
+        return (
+            min(max(turn, -maximumAngle), maximumAngle) * turnSign,
+            min(max(nod, -maximumAngle), maximumAngle)
+        )
     }
 
     /// Fires a small burst of bubbles the moment the mouth opens, with hysteresis to avoid repeat triggers while held open.

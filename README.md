@@ -42,3 +42,16 @@ avatar, without debug UI.
 These values are reported by iOS; they do not reveal the panel's physical aspect
 ratio or any stretching/cropping performed by the display or HDMI adapter.
 Diagnostics do not change the output mode or avatar layout.
+
+## Fish fin motion
+
+The fish's tail and pectoral bones react to head turns and nods with damped,
+chained springs; gentle swimming continues at rest and becomes livelier as the
+mouth opens. If face tracking is lost, the fins transition to a small idle sway
+after 1.5 seconds. All four fins also receive a UV-mapped ripple in the Metal
+geometry modifier, layered with the existing caustic surface shader.
+
+The rig expects the `Tail_1`–`Tail_3` and `Pec_L_1`–`Pec_L_2` /
+`Pec_R_1`–`Pec_R_2` joint names and the `FinWave` second UV set in
+`fish.usdz`. Ripple tuning and the default reaction, swim, ripple-height, and
+ripple-speed values are defined in `FinRig.swift`.

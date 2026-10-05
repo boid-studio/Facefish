@@ -155,6 +155,9 @@ final class UnderwaterSceneController {
     private var ambientBubbles: BubbleSphereSystem?
 
     init(scene: Entity) {
+        if library == nil {
+            logger.error("Metal library unavailable; caustic and fin-ripple shaders are disabled.")
+        }
         addLights(to: scene)
         addBackdrop(to: scene.findEntity(named: "Backdrop") ?? scene)
         if let emitter = scene.findEntity(named: "BubbleEmitter") {
@@ -190,18 +193,40 @@ final class UnderwaterSceneController {
     /// Gives single-part meshes (fins, eyes) the caustic shader. Multi-part USD meshes such as the
     /// subdivided, blend-shaped body don't render with CustomMaterial, so they rely on the dappled lights.
     func applyCaustics(to entity: Entity) {
-        if var model = entity.components[ModelComponent.self], model.mesh.contents.models.map(\.parts.count).reduce(0, +) == 1 {
-            model.materials = model.materials.map { causticMaterial(from: $0, fog: 0) ?? $0 }
-            entity.components.set(model)
+        applyCaustics(to: entity, inheritedFin: nil)
+    }
+
+    private func applyCaustics(to entity: Entity, inheritedFin: FinWaveConfiguration?) {
+        let fin = FinWaveConfiguration.matching(entity.name) ?? inheritedFin
+        if let existingModel = entity.components[ModelComponent.self] {
+            let partCount = existingModel.mesh.contents.models.map(\.parts.count).reduce(0, +)
+            if partCount == 1 {
+                var model = existingModel
+                model.materials = model.materials.map { causticMaterial(from: $0, fog: 0, fin: fin) ?? $0 }
+                entity.components.set(model)
+            } else if fin != nil {
+                logger.error("Fin mesh \(entity.name, privacy: .public) has multiple parts; fin ripple is unavailable.")
+            }
         }
         for child in entity.children {
-            applyCaustics(to: child)
+            applyCaustics(to: child, inheritedFin: fin)
         }
     }
 
-    private func causticMaterial(from base: any Material, fog: Float) -> CustomMaterial? {
+    private func causticMaterial(from base: any Material, fog: Float, fin: FinWaveConfiguration?) -> CustomMaterial? {
         guard let library else { return nil }
         do {
+            if let fin {
+                var material = try CustomMaterial(
+                    from: base,
+                    surfaceShader: .init(named: "causticFinSurface", in: library),
+                    geometryModifier: .init(named: fin.shaderName, in: library)
+                )
+                material.custom.value = [fin.amplitude, fin.wavelength, fin.falloff, 0]
+                material.faceCulling = .none
+                return material
+            }
+
             var material = try CustomMaterial(from: base, surfaceShader: .init(named: "causticSurface", in: library))
             // Pattern frequency per metre, focus, strength, distance fog.
             material.custom.value = [32, 6, 1.4, fog]
