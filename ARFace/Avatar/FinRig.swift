@@ -103,6 +103,7 @@ final class FinRig {
     private var nodRate: Float = 0
     private var trackingLostDuration: Float = 0
     private var time: Float = 0
+    private var isEnabled = true
 
     init(model: Entity) {
         var rigs: [ModelRig] = []
@@ -124,8 +125,19 @@ final class FinRig {
         }
     }
 
+    func setEnabled(_ enabled: Bool, refreshMaterials: Bool = false) {
+        guard enabled != isEnabled || refreshMaterials else { return }
+        let changed = enabled != isEnabled
+        isEnabled = enabled
+        if changed, !enabled {
+            apply(Pose())
+        }
+        updateWaveMaterials(amplitudeScale: enabled ? finWave : 0)
+    }
+
     func update(turn trackedTurn: Float?, nod trackedNod: Float?, mouthOpen: Float, deltaTime rawDeltaTime: TimeInterval) {
         guard rawDeltaTime.isFinite, rawDeltaTime > 0 else { return }
+        guard isEnabled else { return }
         let deltaTime = Float(min(rawDeltaTime, 0.1))
         time += deltaTime
 
@@ -262,15 +274,18 @@ final class FinRig {
     private func updateWaves(mouthOpen: Float, deltaTime: Float) {
         let speedMultiplier = 1 + 0.6 * min(1, max(0, mouthOpen))
         for index in waveTargets.indices {
-            var target = waveTargets[index]
-            target.phase += target.configuration.speed * finWaveSpeed * speedMultiplier * deltaTime
-            waveTargets[index] = target
+            waveTargets[index].phase += waveTargets[index].configuration.speed * finWaveSpeed * speedMultiplier * deltaTime
+        }
+        updateWaveMaterials(amplitudeScale: finWave)
+    }
 
+    private func updateWaveMaterials(amplitudeScale: Float) {
+        for target in waveTargets {
             guard var component = target.model.components[ModelComponent.self] else { continue }
             component.materials = component.materials.map { base in
                 guard var material = base as? CustomMaterial else { return base }
                 material.custom.value = [
-                    target.configuration.amplitude * finWave,
+                    target.configuration.amplitude * amplitudeScale,
                     target.configuration.wavelength,
                     target.configuration.falloff,
                     target.phase

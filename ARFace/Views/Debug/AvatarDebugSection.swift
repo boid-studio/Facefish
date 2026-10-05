@@ -24,6 +24,25 @@ struct AvatarDebugSection: View {
     }
 }
 
+struct RenderingDebugSection: View {
+    @Bindable var model: AvatarDebugModel
+
+    var body: some View {
+        LabeledContent("Frame rate") {
+            Text("\(model.framesPerSecond, specifier: "%.1f") FPS")
+                .monospacedDigit()
+        }
+
+        Toggle("Caustic shaders", isOn: $model.causticsEnabled)
+        Toggle("Ambient bubbles", isOn: $model.ambientBubblesEnabled)
+        Toggle("Mouth bubbles", isOn: $model.mouthBubblesEnabled)
+        Toggle("Animated spotlights", isOn: $model.spotlightsEnabled)
+        Toggle("Directional shadow", isOn: $model.shadowsEnabled)
+        Toggle("Blend shapes", isOn: $model.blendShapesEnabled)
+        Toggle("Fin animation", isOn: $model.finAnimationEnabled)
+    }
+}
+
 struct AnimationsDebugSection: View {
     let model: AvatarDebugModel
 

@@ -79,6 +79,29 @@ void causticFinSurface(realitykit::surface_parameters params) {
     causticSurfaceImpl(params, float4(32.0, 6.0, 1.4, 0.0));
 }
 
+// Lightweight PBR passthrough used while caustics are disabled. Keeping a CustomMaterial on
+// animated meshes avoids changing RealityKit's render path for skinning and blend shapes.
+[[visible]]
+void baseSurface(realitykit::surface_parameters params) {
+    constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
+    auto tex = params.textures();
+    auto material = params.material_constants();
+
+    float2 uv = params.geometry().uv0();
+    uv.y = 1.0 - uv.y;
+
+    auto surface = params.surface();
+    surface.set_base_color(tex.base_color().sample(s, uv).rgb * half3(material.base_color_tint()));
+    surface.set_emissive_color(tex.emissive_color().sample(s, uv).rgb * half3(material.emissive_color()));
+    surface.set_roughness(tex.roughness().sample(s, uv).r * half(material.roughness_scale()));
+    surface.set_metallic(tex.metallic().sample(s, uv).r * half(material.metallic_scale()));
+    surface.set_specular(tex.specular().sample(s, uv).r * half(material.specular_scale()));
+    surface.set_ambient_occlusion(tex.ambient_occlusion().sample(s, uv).r);
+    surface.set_clearcoat(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()));
+    surface.set_clearcoat_roughness(tex.clearcoat_roughness().sample(s, uv).r * half(material.clearcoat_roughness_scale()));
+    surface.set_opacity(half(material.opacity_scale()));
+}
+
 static void finWave(realitykit::geometry_parameters params, float3 axis, float cross) {
     float4 custom = params.uniforms().custom_parameter();
     float2 uv = params.geometry().uv1();
@@ -119,6 +142,13 @@ void bubbleSurface(realitykit::surface_parameters params) {
     params.surface().set_base_color(color);
     params.surface().set_emissive_color(color);
     params.surface().set_opacity(half(saturate(rim + spec)));
+}
+
+[[visible]]
+void backdropBaseSurface(realitykit::surface_parameters params) {
+    half3 color = waterColor(params.geometry().world_position().y);
+    params.surface().set_base_color(color);
+    params.surface().set_emissive_color(color);
 }
 
 // Unlit sea backdrop: depth gradient, slanted god rays and a shimmering surface band at the top.

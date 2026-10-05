@@ -44,6 +44,8 @@ final class AvatarController {
     private var mouthBubbles: Entity?
     private var mouthBubbleSpheres: BubbleSphereSystem?
     private var mouthIsOpen = false
+    private var blendShapesEnabled = true
+    private var causticsEnabled = true
 
     init(model: Entity, targetSize: Float = 0.25) {
         finRig = FinRig(model: model)
@@ -79,11 +81,17 @@ final class AvatarController {
         }
     }
 
-    func apply(_ state: FaceState?, deltaTime: TimeInterval) {
+    func apply(_ state: FaceState?, deltaTime: TimeInterval, options: AvatarRenderOptions) {
         guard deltaTime.isFinite, deltaTime > 0 else { return }
         if deltaTime > 0.25 {
             resetSmoothing()
         }
+
+        setBlendShapesEnabled(options.blendShapesEnabled)
+        mouthBubbles?.isEnabled = options.mouthBubblesEnabled
+        let causticsChanged = options.causticsEnabled != causticsEnabled
+        causticsEnabled = options.causticsEnabled
+        finRig.setEnabled(options.finAnimationEnabled, refreshMaterials: causticsChanged)
 
         var turn: Float?
         var nod: Float?
@@ -122,14 +130,18 @@ final class AvatarController {
             let mouthFunnel = smoothedBlendShapes[.mouthFunnel] ?? 0
             let mouthClose = smoothedBlendShapes[.mouthClose] ?? 0
             mouthOpen = max(appliedJawOpen, 0.5 * mouthFunnel) * (1 - 0.85 * mouthClose)
-            updateMouthBubbles(jawOpen: appliedJawOpen)
+            if options.mouthBubblesEnabled {
+                updateMouthBubbles(jawOpen: appliedJawOpen)
+            }
 
-            for target in targets {
-                guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
-                for binding in target.bindings {
-                    component.weightSet[binding.setIndex].weights[binding.weightIndex] = smoothedBlendShapes[binding.location] ?? 0
+            if blendShapesEnabled {
+                for target in targets {
+                    guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
+                    for binding in target.bindings {
+                        component.weightSet[binding.setIndex].weights[binding.weightIndex] = smoothedBlendShapes[binding.location] ?? 0
+                    }
+                    target.entity.components.set(component)
                 }
-                target.entity.components.set(component)
             }
         } else {
             resetSmoothing()
@@ -137,8 +149,24 @@ final class AvatarController {
             updateMouthBubbles(jawOpen: 0)
         }
 
-        mouthBubbleSpheres?.update(deltaTime: deltaTime)
+        if options.mouthBubblesEnabled {
+            mouthBubbleSpheres?.update(deltaTime: deltaTime)
+        }
         finRig.update(turn: turn, nod: nod, mouthOpen: mouthOpen, deltaTime: deltaTime)
+    }
+
+    private func setBlendShapesEnabled(_ enabled: Bool) {
+        guard enabled != blendShapesEnabled else { return }
+        blendShapesEnabled = enabled
+        guard !enabled else { return }
+
+        for target in targets {
+            guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
+            for binding in target.bindings {
+                component.weightSet[binding.setIndex].weights[binding.weightIndex] = 0
+            }
+            target.entity.components.set(component)
+        }
     }
 
     private func resetSmoothing() {

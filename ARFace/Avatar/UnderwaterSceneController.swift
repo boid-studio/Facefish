@@ -88,6 +88,10 @@ final class BubbleSphereSystem {
         }
     }
 
+    func setEnabled(_ enabled: Bool) {
+        parent.isEnabled = enabled
+    }
+
     func update(deltaTime: TimeInterval, emissionRate: Float = 0, time: Float = 0) {
         guard deltaTime.isFinite, deltaTime > 0 else { return }
         let dt = Float(min(deltaTime, 0.1))
@@ -148,11 +152,23 @@ final class BubbleSphereSystem {
 /// Dresses the Reality Composer Pro `UnderwaterScene` anchors (Backdrop, BubbleEmitter)
 /// with a sea-blue backdrop, light from above, caustics (see Underwater.metal) and rising bubbles.
 final class UnderwaterSceneController {
+    private struct MaterialOverride {
+        let entity: Entity
+        let enabledMaterials: [any Material]
+        let disabledMaterials: [any Material]
+    }
+
     private let library = MTLCreateSystemDefaultDevice()?.makeDefaultLibrary()
     private let logger = Logger(subsystem: "ARFace", category: "Underwater")
     private var dapples: [(light: SpotLight, phase: Float)] = []
+    private var sun: DirectionalLight?
+    private var materialOverrides: [MaterialOverride] = []
     private var time: Float = 0
     private var ambientBubbles: BubbleSphereSystem?
+    private var causticsEnabled = true
+    private var ambientBubblesEnabled = true
+    private var spotlightsEnabled = true
+    private var shadowsEnabled = true
 
     init(scene: Entity) {
         if library == nil {
@@ -179,14 +195,27 @@ final class UnderwaterSceneController {
     }
 
     /// Wanders the dappled spotlights so patches of light drift across the fish.
-    func update(deltaTime: TimeInterval) {
+    func update(deltaTime: TimeInterval, options: AvatarRenderOptions) {
         guard deltaTime.isFinite, deltaTime > 0 else { return }
+        setCausticsEnabled(options.causticsEnabled)
+        setAmbientBubblesEnabled(options.ambientBubblesEnabled)
+        setSpotlightsEnabled(options.spotlightsEnabled)
+        setShadowsEnabled(options.shadowsEnabled)
+
         time += Float(min(deltaTime, 0.1))
-        ambientBubbles?.update(deltaTime: deltaTime, emissionRate: 25, time: time)
+        if ambientBubblesEnabled {
+            ambientBubbles?.update(deltaTime: deltaTime, emissionRate: 25, time: time)
+        }
+        if spotlightsEnabled {
+            updateDapples()
+        }
+    }
+
+    private func updateDapples() {
         for (light, phase) in dapples {
             let t = time + phase
-            light.position = [sin(t * 0.7) * 0.1 + sin(t * 1.9) * 0.03, 0.6, cos(t * 0.5) * 0.06 + 0.05]
-            light.light.intensity = 9000 * (0.55 + 0.45 * sin(t * 2.3) * sin(t * 1.3 + 1))
+            light.position = [sin(t * 0.7) * 0.13 + sin(t * 1.9) * 0.04, 0.6, cos(t * 0.5) * 0.08 + 0.05]
+            light.light.intensity = 18_000 * (0.55 + 0.45 * sin(t * 2.3) * sin(t * 1.3 + 1))
         }
     }
 
@@ -200,10 +229,24 @@ final class UnderwaterSceneController {
         let fin = FinWaveConfiguration.matching(entity.name) ?? inheritedFin
         if let existingModel = entity.components[ModelComponent.self] {
             let partCount = existingModel.mesh.contents.models.map(\.parts.count).reduce(0, +)
-            if partCount == 1 {
+            let blendShapeMapping = BlendShapeWeightsMapping(meshResource: existingModel.mesh)
+            let hasBlendShapes = !BlendShapeWeightsComponent(weightsMapping: blendShapeMapping).weightSet.isEmpty
+            if partCount == 1, !hasBlendShapes {
                 var model = existingModel
-                model.materials = model.materials.map { causticMaterial(from: $0, fog: 0, fin: fin) ?? $0 }
+                let originalMaterials = model.materials
+                let enabledMaterials = originalMaterials.map {
+                    customMaterial(from: $0, causticsEnabled: true, fog: 0, fin: fin) ?? $0
+                }
+                let disabledMaterials = originalMaterials.map {
+                    customMaterial(from: $0, causticsEnabled: false, fog: 0, fin: fin) ?? $0
+                }
+                model.materials = enabledMaterials
                 entity.components.set(model)
+                materialOverrides.append(MaterialOverride(
+                    entity: entity,
+                    enabledMaterials: enabledMaterials,
+                    disabledMaterials: disabledMaterials
+                ))
             } else if fin != nil {
                 logger.error("Fin mesh \(entity.name, privacy: .public) has multiple parts; fin ripple is unavailable.")
             }
@@ -213,13 +256,21 @@ final class UnderwaterSceneController {
         }
     }
 
-    private func causticMaterial(from base: any Material, fog: Float, fin: FinWaveConfiguration?) -> CustomMaterial? {
+    private func customMaterial(
+        from base: any Material,
+        causticsEnabled: Bool,
+        fog: Float,
+        fin: FinWaveConfiguration?
+    ) -> CustomMaterial? {
         guard let library else { return nil }
         do {
             if let fin {
                 var material = try CustomMaterial(
                     from: base,
-                    surfaceShader: .init(named: "causticFinSurface", in: library),
+                    surfaceShader: .init(
+                        named: causticsEnabled ? "causticFinSurface" : "baseSurface",
+                        in: library
+                    ),
                     geometryModifier: .init(named: fin.shaderName, in: library)
                 )
                 material.custom.value = [fin.amplitude, fin.wavelength, fin.falloff, 0]
@@ -227,7 +278,8 @@ final class UnderwaterSceneController {
                 return material
             }
 
-            var material = try CustomMaterial(from: base, surfaceShader: .init(named: "causticSurface", in: library))
+            let shaderName = causticsEnabled ? "causticSurface" : "baseSurface"
+            var material = try CustomMaterial(from: base, surfaceShader: .init(named: shaderName, in: library))
             // Pattern frequency per metre, focus, strength, distance fog.
             material.custom.value = [32, 6, 1.4, fog]
             return material
@@ -246,6 +298,7 @@ final class UnderwaterSceneController {
         sun.shadow = DirectionalLightComponent.Shadow(maximumDistance: 2, depthBias: 1)
         sun.look(at: .zero, from: [0.1, 1, 0.25], relativeTo: nil)
         scene.addChild(sun)
+        self.sun = sun
 
         let fill = DirectionalLight()
         fill.light.color = UIColor(red: 0.2, green: 0.55, blue: 0.75, alpha: 1)
@@ -256,28 +309,72 @@ final class UnderwaterSceneController {
         for phase: Float in [0, 2.1, 4.3] {
             let spot = SpotLight()
             spot.light.color = UIColor(red: 0.8, green: 0.97, blue: 1.0, alpha: 1)
-            spot.light.innerAngleInDegrees = 6
-            spot.light.outerAngleInDegrees = 16
+            spot.light.innerAngleInDegrees = 4
+            spot.light.outerAngleInDegrees = 11
             spot.light.attenuationRadius = 2
             spot.orientation = simd_quatf(angle: -.pi / 2, axis: [1, 0, 0])
             scene.addChild(spot)
             dapples.append((spot, phase))
         }
-        update(deltaTime: 0.001)
+        time = 0.001
+        updateDapples()
     }
 
     // MARK: - Backdrop
 
     private func addBackdrop(to parent: Entity) {
-        let material: any Material
+        let fallback = UnlitMaterial(color: UIColor(red: 0.02, green: 0.26, blue: 0.44, alpha: 1))
+        let materials: (enabled: any Material, disabled: any Material)
         do {
             guard let library else { throw CocoaError(.featureUnsupported) }
-            material = try CustomMaterial(surfaceShader: .init(named: "backdropSurface", in: library), lightingModel: .unlit)
+            materials = (
+                try CustomMaterial(surfaceShader: .init(named: "backdropSurface", in: library), lightingModel: .unlit),
+                try CustomMaterial(
+                    surfaceShader: .init(named: "backdropBaseSurface", in: library),
+                    lightingModel: .unlit
+                )
+            )
         } catch {
             logger.error("Backdrop shader unavailable: \(error.localizedDescription)")
-            material = UnlitMaterial(color: UIColor(red: 0.02, green: 0.26, blue: 0.44, alpha: 1))
+            materials = (fallback, fallback)
         }
-        parent.addChild(ModelEntity(mesh: .generatePlane(width: 6, height: 4), materials: [material]))
+        let backdrop = ModelEntity(mesh: .generatePlane(width: 6, height: 4), materials: [materials.enabled])
+        parent.addChild(backdrop)
+        materialOverrides.append(MaterialOverride(
+            entity: backdrop,
+            enabledMaterials: [materials.enabled],
+            disabledMaterials: [materials.disabled]
+        ))
+    }
+
+    private func setCausticsEnabled(_ enabled: Bool) {
+        guard enabled != causticsEnabled else { return }
+        causticsEnabled = enabled
+        for override in materialOverrides {
+            guard var model = override.entity.components[ModelComponent.self] else { continue }
+            model.materials = enabled ? override.enabledMaterials : override.disabledMaterials
+            override.entity.components.set(model)
+        }
+    }
+
+    private func setAmbientBubblesEnabled(_ enabled: Bool) {
+        guard enabled != ambientBubblesEnabled else { return }
+        ambientBubblesEnabled = enabled
+        ambientBubbles?.setEnabled(enabled)
+    }
+
+    private func setSpotlightsEnabled(_ enabled: Bool) {
+        guard enabled != spotlightsEnabled else { return }
+        spotlightsEnabled = enabled
+        for (light, _) in dapples {
+            light.isEnabled = enabled
+        }
+    }
+
+    private func setShadowsEnabled(_ enabled: Bool) {
+        guard enabled != shadowsEnabled else { return }
+        shadowsEnabled = enabled
+        sun?.shadow = enabled ? DirectionalLightComponent.Shadow(maximumDistance: 2, depthBias: 1) : nil
     }
 
 }

@@ -2,6 +2,16 @@ import Foundation
 import Observation
 import RealityKit
 
+struct AvatarRenderOptions {
+    let causticsEnabled: Bool
+    let ambientBubblesEnabled: Bool
+    let mouthBubblesEnabled: Bool
+    let spotlightsEnabled: Bool
+    let shadowsEnabled: Bool
+    let blendShapesEnabled: Bool
+    let finAnimationEnabled: Bool
+}
+
 struct AvatarAnimation: Identifiable {
     let id = UUID()
     let name: String
@@ -32,9 +42,32 @@ final class AvatarDebugModel {
     private(set) var controller: AvatarController?
     private(set) var animations: [AvatarAnimation] = []
     private(set) var loopingAnimationIDs: Set<AvatarAnimation.ID> = []
+    private(set) var framesPerSecond: Double = 0
+
+    var causticsEnabled = true
+    var ambientBubblesEnabled = true
+    var mouthBubblesEnabled = true
+    var spotlightsEnabled = true
+    var shadowsEnabled = true
+    var blendShapesEnabled = true
+    var finAnimationEnabled = true
+
+    var renderOptions: AvatarRenderOptions {
+        AvatarRenderOptions(
+            causticsEnabled: causticsEnabled,
+            ambientBubblesEnabled: ambientBubblesEnabled,
+            mouthBubblesEnabled: mouthBubblesEnabled,
+            spotlightsEnabled: spotlightsEnabled,
+            shadowsEnabled: shadowsEnabled,
+            blendShapesEnabled: blendShapesEnabled,
+            finAnimationEnabled: finAnimationEnabled
+        )
+    }
 
     @ObservationIgnored private var ownerID: UUID?
     @ObservationIgnored private var playbacks: [AvatarAnimation.ID: AnimationPlaybackController] = [:]
+    @ObservationIgnored private var sampledFrameCount = 0
+    @ObservationIgnored private var sampledDuration: TimeInterval = 0
 
     func attach(owner: UUID, controller: AvatarController, animations: [AvatarAnimation]) {
         stopAll()
@@ -49,6 +82,20 @@ final class AvatarDebugModel {
         ownerID = nil
         controller = nil
         animations = []
+        framesPerSecond = 0
+        sampledFrameCount = 0
+        sampledDuration = 0
+    }
+
+    func recordFrame(deltaTime: TimeInterval) {
+        guard deltaTime.isFinite, deltaTime > 0 else { return }
+        sampledFrameCount += 1
+        sampledDuration += deltaTime
+        guard sampledDuration >= 0.5 else { return }
+
+        framesPerSecond = Double(sampledFrameCount) / sampledDuration
+        sampledFrameCount = 0
+        sampledDuration = 0
     }
 
     func playOnce(_ animation: AvatarAnimation) {

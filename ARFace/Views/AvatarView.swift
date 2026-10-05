@@ -44,8 +44,10 @@ struct AvatarView: View {
                 controller.mirrored = mirrored
                 content.add(controller.root)
                 updateSubscription = content.subscribe(to: SceneEvents.Update.self) { event in
-                    underwater.update(deltaTime: event.deltaTime)
-                    controller.apply(tracker.snapshot(), deltaTime: event.deltaTime)
+                    avatarDebug.recordFrame(deltaTime: event.deltaTime)
+                    let options = avatarDebug.renderOptions
+                    underwater.update(deltaTime: event.deltaTime, options: options)
+                    controller.apply(tracker.snapshot(), deltaTime: event.deltaTime, options: options)
                 }
                 self.controller = controller
                 avatarDebug.attach(owner: debugOwnerID, controller: controller, animations: model.animations())
