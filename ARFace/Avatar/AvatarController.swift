@@ -221,6 +221,7 @@ final class AvatarController {
                 for (setIndex, data) in component.weightSet.enumerated() {
                     for (weightIndex, name) in data.weightNames.enumerated() {
                         if let location = BlendShapeMapping.location(forModelShape: name) {
+                            guard !Self.isEyelidBlink(location) else { continue }
                             bindings.append(Binding(setIndex: setIndex, weightIndex: weightIndex, location: location))
                         } else {
                             unmatched.append(name)
@@ -237,6 +238,10 @@ final class AvatarController {
         for child in entity.children {
             bind(child, unmatched: &unmatched)
         }
+    }
+
+    private static func isEyelidBlink(_ location: ARFaceAnchor.BlendShapeLocation) -> Bool {
+        location == .eyeBlinkLeft || location == .eyeBlinkRight
     }
 
     /// Scales the model to `targetSize` and centers it on the root so head rotation pivots around it.

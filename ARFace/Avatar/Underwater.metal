@@ -64,7 +64,8 @@ static void causticSurfaceImpl(realitykit::surface_parameters params, float4 cus
     surface.set_ambient_occlusion(tex.ambient_occlusion().sample(s, uv).r);
     surface.set_clearcoat(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()));
     surface.set_clearcoat_roughness(tex.clearcoat_roughness().sample(s, uv).r * half(material.clearcoat_roughness_scale()));
-    surface.set_opacity(half(material.opacity_scale()));
+    surface.set_opacity(tex.opacity().sample(s, uv).r * half(material.opacity_scale())
+                        * tex.base_color().sample(s, uv).a);
 }
 
 // custom_parameter: x = pattern frequency per metre, y = focus, z = strength, w = distance fog amount.
@@ -99,7 +100,8 @@ void baseSurface(realitykit::surface_parameters params) {
     surface.set_ambient_occlusion(tex.ambient_occlusion().sample(s, uv).r);
     surface.set_clearcoat(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()));
     surface.set_clearcoat_roughness(tex.clearcoat_roughness().sample(s, uv).r * half(material.clearcoat_roughness_scale()));
-    surface.set_opacity(half(material.opacity_scale()));
+    surface.set_opacity(tex.opacity().sample(s, uv).r * half(material.opacity_scale())
+                        * tex.base_color().sample(s, uv).a);
 }
 
 static void finWave(realitykit::geometry_parameters params, float3 axis, float cross) {

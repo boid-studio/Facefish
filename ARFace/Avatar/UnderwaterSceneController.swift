@@ -222,11 +222,16 @@ final class UnderwaterSceneController {
     /// Gives single-part meshes (fins, eyes) the caustic shader. Multi-part USD meshes such as the
     /// subdivided, blend-shaped body don't render with CustomMaterial, so they rely on the dappled lights.
     func applyCaustics(to entity: Entity) {
-        applyCaustics(to: entity, inheritedFin: nil)
+        applyCaustics(to: entity, inheritedFin: nil, inheritedEyelid: false)
     }
 
-    private func applyCaustics(to entity: Entity, inheritedFin: FinWaveConfiguration?) {
+    private func applyCaustics(
+        to entity: Entity,
+        inheritedFin: FinWaveConfiguration?,
+        inheritedEyelid: Bool
+    ) {
         let fin = FinWaveConfiguration.matching(entity.name) ?? inheritedFin
+        let isEyelid = inheritedEyelid || entity.name.localizedCaseInsensitiveContains("eyelid")
         if let existingModel = entity.components[ModelComponent.self] {
             let partCount = existingModel.mesh.contents.models.map(\.parts.count).reduce(0, +)
             let blendShapeMapping = BlendShapeWeightsMapping(meshResource: existingModel.mesh)
@@ -234,10 +239,10 @@ final class UnderwaterSceneController {
             if partCount == 1, !hasBlendShapes {
                 var model = existingModel
                 let originalMaterials = model.materials
-                let enabledMaterials = originalMaterials.map {
+                let enabledMaterials = isEyelid ? originalMaterials : originalMaterials.map {
                     customMaterial(from: $0, causticsEnabled: true, fog: 0, fin: fin) ?? $0
                 }
-                let disabledMaterials = originalMaterials.map {
+                let disabledMaterials = isEyelid ? originalMaterials : originalMaterials.map {
                     customMaterial(from: $0, causticsEnabled: false, fog: 0, fin: fin) ?? $0
                 }
                 model.materials = enabledMaterials
@@ -252,7 +257,7 @@ final class UnderwaterSceneController {
             }
         }
         for child in entity.children {
-            applyCaustics(to: child, inheritedFin: fin)
+            applyCaustics(to: child, inheritedFin: fin, inheritedEyelid: isEyelid)
         }
     }
 

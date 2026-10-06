@@ -34,11 +34,9 @@ struct FinWaveConfiguration {
 
     static func matching(_ name: String) -> FinWaveConfiguration? {
         let normalized = name.lowercased().filter { $0.isLetter || $0.isNumber }
-        if normalized.contains("fintail") { return .tail }
-        if normalized.contains("findorsal") { return .dorsal }
-        if normalized.contains("finpectorall") || normalized.contains("finpectoralr") {
-            return .pectoral
-        }
+        if normalized.contains("tail") { return .tail }
+        if normalized.contains("dorsal") { return .dorsal }
+        if normalized.contains("pectoral") { return .pectoral }
         return nil
     }
 }
@@ -110,8 +108,14 @@ final class FinRig {
         collectModels(in: model, inheritedConfiguration: nil, rigs: &rigs)
         modelRigs = rigs
 
-        let expectedJoints = ["tail1", "tail2", "tail3", "pecl1", "pecl2", "pecr1", "pecr2"]
-        let missingJoints = expectedJoints.filter { !boundJointNames.contains($0) }
+        let expectedJoints = ["tail1", "tail2", "tail3"]
+        var missingJoints = expectedJoints.filter { !boundJointNames.contains($0) }
+        let hasLeftPectoral = boundJointNames.contains("pecl0") ||
+            (boundJointNames.contains("pecl1") && boundJointNames.contains("pecl2"))
+        let hasRightPectoral = boundJointNames.contains("pecr0") ||
+            (boundJointNames.contains("pecr1") && boundJointNames.contains("pecr2"))
+        if !hasLeftPectoral { missingJoints.append("pectoralLeft") }
+        if !hasRightPectoral { missingJoints.append("pectoralRight") }
         if !missingJoints.isEmpty {
             logger.error("Fish fin rig is missing joints: \(missingJoints.joined(separator: ", "))")
         }
@@ -233,9 +237,9 @@ final class FinRig {
                 case "tail1": motion = .tail(0)
                 case "tail2": motion = .tail(1)
                 case "tail3": motion = .tail(2)
-                case "pecl1": motion = .pectoralFlap(side: 0, index: 0)
+                case "pecl0", "pecl1": motion = .pectoralFlap(side: 0, index: 0)
                 case "pecl2": motion = .pectoralFlap(side: 0, index: 1)
-                case "pecr1": motion = .pectoralFlap(side: 1, index: 0)
+                case "pecr0", "pecr1": motion = .pectoralFlap(side: 1, index: 0)
                 case "pecr2": motion = .pectoralFlap(side: 1, index: 1)
                 default: motion = nil
                 }
