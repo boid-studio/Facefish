@@ -11,6 +11,8 @@ final class ExternalDisplaySceneDelegate: NSObject, UIWindowSceneDelegate {
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
 
+        Self.selectPreferredSquareMode(on: windowScene.screen)
+
         let window = UIWindow(windowScene: windowScene)
         window.backgroundColor = .black
         window.rootViewController = UIHostingController(rootView: ExternalCanvasView())
@@ -25,6 +27,15 @@ final class ExternalDisplaySceneDelegate: NSObject, UIWindowSceneDelegate {
         }
         window = nil
     }
+
+    /// Picks 1080x1080 if offered, otherwise the square mode closest to it; leaves the mode unchanged if none are square.
+    static func selectPreferredSquareMode(on screen: UIScreen) {
+        let squareModes = screen.availableModes.filter { $0.size.width == $0.size.height }
+        guard let best = squareModes.min(by: { abs($0.size.width - 1080) < abs($1.size.width - 1080) }) else { return }
+        if screen.currentMode != best {
+            screen.currentMode = best
+        }
+    }
 }
 
 private struct ExternalCanvasView: View {
@@ -32,7 +43,7 @@ private struct ExternalCanvasView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let side = max(geometry.size.height, 1)
+            let side = max(min(geometry.size.width, geometry.size.height), 1)
 
             AvatarView(
                 tracker: avatarSession.tracker,
@@ -40,10 +51,8 @@ private struct ExternalCanvasView: View {
                 showsLoadError: false
             )
             .frame(width: side, height: side)
-            // Pre-stretch the square canvas to counter the square panel's HDMI squeeze.
-            .scaleEffect(x: geometry.size.width / side, y: 1)
-            .frame(width: geometry.size.width, height: geometry.size.height)
             .clipped()
+            .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .ignoresSafeArea()
         .background(.black)
