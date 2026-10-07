@@ -340,6 +340,11 @@ sizes are at the top of the script; re-running overwrites only its own keys, so 
 key the same correction, so expressions keep their movement. Re-run it whenever sculpting has
 drifted one side; then re-run `make_mouth_shapes.py` so its keys are exact mirror pairs again.
 
+**Brows and mirroring keys.** `blender/make_brow_shapes.py` creates the five Face Cap brow keys (each brow
+turns about its eyeball's centre, so it slides over the eye) and an empty `tongueOut` to sculpt; it only
+creates missing keys, so sculpted ones are safe. `blender/mirror_keys.py` makes one side's key from the
+other's (e.g. `browDownLeft` as the mirror of `browDownRight`): edit `PAIRS` at the top and run it.
+
 **Fin bake.** All fins share the texture UV map `FinUV` without overlapping (the two side fins are
 stacked on purpose: mirror copies). `blender/bake_fins.py` bakes every fin into `fins_bake` in one
 bake, with your current bake settings; baking fins one at a time with "Clear Image" on keeps only
