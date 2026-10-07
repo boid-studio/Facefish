@@ -12,6 +12,8 @@ struct AvatarRenderOptions {
     let finAnimationEnabled: Bool
     let eyeMovementEnabled: Bool
     let eyelidsEnabled: Bool
+    let swimMotionEnabled: Bool
+    let headFollowEnabled: Bool
 }
 
 struct AvatarAnimation: Identifiable {
@@ -56,6 +58,8 @@ final class AvatarDebugModel {
     var finAnimationEnabled = true
     var eyeMovementEnabled = true
     var eyelidsEnabled = true
+    var swimMotionEnabled = true
+    var headFollowEnabled = true
 
     var renderOptions: AvatarRenderOptions {
         AvatarRenderOptions(
@@ -67,7 +71,9 @@ final class AvatarDebugModel {
             blendShapesEnabled: blendShapesEnabled,
             finAnimationEnabled: finAnimationEnabled,
             eyeMovementEnabled: eyeMovementEnabled,
-            eyelidsEnabled: eyelidsEnabled
+            eyelidsEnabled: eyelidsEnabled,
+            swimMotionEnabled: swimMotionEnabled,
+            headFollowEnabled: headFollowEnabled
         )
     }
 

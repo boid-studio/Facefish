@@ -52,6 +52,8 @@ struct RenderingDebugSection: View {
         Toggle("Fin animation", isOn: $model.finAnimationEnabled)
         Toggle("Eye movement", isOn: $model.eyeMovementEnabled)
         Toggle("Eyelids", isOn: $model.eyelidsEnabled)
+        Toggle("Swim motion", isOn: $model.swimMotionEnabled)
+        Toggle("Follow head", isOn: $model.headFollowEnabled)
     }
 }
 

@@ -7,6 +7,8 @@ import UIKit
 /// Drives a loaded avatar's blend shapes and head rotation from `FaceState`.
 final class AvatarController {
     let root = Entity()
+    /// Between the head pose (`root`) and the model: carries the swim motion's tilt and rock.
+    private let body = Entity()
     /// Mirror mode: the avatar behaves like a reflection of the user.
     var mirrored = true {
         didSet {
@@ -34,6 +36,14 @@ final class AvatarController {
     private let finRig: FinRig
     private let eyeRig: EyeRig
     private let lidRig: LidRig
+    private var swimMotion = SwimMotion()
+    /// How far the fish swims toward where it faces, as a fraction of its size per unit of facing
+    /// (looking 20 degrees up moves it about 15% of its size up).
+    var headFollowGain: Float = 0.45
+    private var followPosition = SIMD3<Float>(repeating: 0)
+    private var followVelocity = SIMD3<Float>(repeating: 0)
+    private var swimAmount: Float = 1
+    private let fishSize: Float
     private var finNeutralRotation: simd_quatf?
 
     private(set) var boundLocations: Set<ARFaceAnchor.BlendShapeLocation> = []
@@ -53,8 +63,10 @@ final class AvatarController {
         finRig = FinRig(model: model)
         eyeRig = EyeRig(model: model)
         lidRig = LidRig(model: model)
+        fishSize = targetSize
         fit(model, targetSize: targetSize)
-        root.addChild(model)
+        root.addChild(body)
+        body.addChild(model)
 
         var unmatched: [String] = []
         bind(model, unmatched: &unmatched)
@@ -169,6 +181,38 @@ final class AvatarController {
             mouthBubbleSpheres?.update(deltaTime: deltaTime)
         }
         finRig.update(turn: turn, nod: nod, mouthOpen: mouthOpen, deltaTime: deltaTime)
+
+        updateHeadFollow(enabled: options.headFollowEnabled, deltaTime: Float(min(deltaTime, 0.1)))
+
+        // Swim motion keeps going without tracking, so the fish never freezes; it fades in and out
+        // when toggled instead of jumping.
+        let swimTarget: Float = options.swimMotionEnabled ? 1 : 0
+        swimAmount += (swimTarget - swimAmount) * Self.smoothingFactor(deltaTime: deltaTime, timeConstant: 0.5)
+        swimMotion.amount = swimAmount
+        let swim = swimMotion.update(deltaTime: Float(min(deltaTime, 0.1)), mouthOpen: mouthOpen, size: fishSize)
+        root.position = followPosition + swim.offset   // in the scene's frame, so "up" stays up when the head tilts
+        body.orientation = swim.rotation     // relative to the head pose
+    }
+
+    /// The fish swims a little toward where it faces: look up and it rises, look aside and it swims
+    /// over. It follows on a soft spring (slight overshoot), and drifts back to the middle when the
+    /// head is straight or tracking is lost.
+    private func updateHeadFollow(enabled: Bool, deltaTime: Float) {
+        var target = SIMD3<Float>(repeating: 0)
+        if enabled, let rotation = smoothedRotation {
+            let facing = rotation.act([0, 0, 1])          // the fish faces +Z at rest
+            target = SIMD3(facing.x, facing.y, 0) * headFollowGain * fishSize
+            let limit = 0.4 * fishSize                      // stay in the frame
+            let length = simd_length(target)
+            if length > limit { target *= limit / length }
+        }
+        let stiffness: Float = 9, ratio: Float = 0.75
+        let steps = max(1, Int((deltaTime / (1.0 / 120)).rounded(.up)))
+        let stepTime = deltaTime / Float(steps)
+        for _ in 0..<steps {
+            followVelocity += (stiffness * (target - followPosition) - 2 * ratio * sqrt(stiffness) * followVelocity) * stepTime
+            followPosition += followVelocity * stepTime
+        }
     }
 
     private func setBlendShapesEnabled(_ enabled: Bool) {
