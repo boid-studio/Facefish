@@ -2,11 +2,16 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var avatarSession = AvatarSession.shared
+    @State private var bluetooth = BluetoothControl.shared
+    @State private var showBluetooth = false
+    @Environment(\.scenePhase) private var scenePhase
     private var tracker: FaceTracker { avatarSession.tracker }
 
     var body: some View {
         Group {
-            if tracker.isSupported {
+            if bluetooth.isControlMode {
+                BluetoothControlView()
+            } else if tracker.isSupported {
                 Group {
                     if avatarSession.externalDisplayScene != nil {
                         VStack(spacing: 12) {
@@ -39,20 +44,45 @@ struct ContentView: View {
                     systemImage: "faceid",
                     description: Text("This device needs a TrueDepth (Face ID) camera.")
                 )
+                .safeAreaInset(edge: .bottom) { bluetoothButton.padding() }
             }
         }
+        .sheet(isPresented: $showBluetooth) { BluetoothControlView(showsDone: true) }
         .onAppear {
             tracker.setDebugEnabled(avatarSession.showDebug)
-            tracker.start()
+            if !bluetooth.isControlMode { tracker.start() }
         }
         .onDisappear { tracker.stop() }
         .onChange(of: avatarSession.showDebug) { _, enabled in tracker.setDebugEnabled(enabled) }
+        .onChange(of: bluetooth.isControlMode) { _, isControlMode in
+            if isControlMode {
+                avatarSession.showDebug = false
+                tracker.stop()
+            } else if scenePhase == .active {
+                tracker.start()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                bluetooth.stop()
+                tracker.stop()
+            } else if phase == .active, !bluetooth.isControlMode {
+                tracker.start()
+            }
+        }
+    }
+
+    private var bluetoothButton: some View {
+        Button("Control", systemImage: "antenna.radiowaves.left.and.right") {
+            showBluetooth = true
+        }
     }
 
     private var controls: some View {
         HStack(spacing: 12) {
             Toggle("Mirror", systemImage: "arrow.left.and.right", isOn: $avatarSession.mirrored)
             Toggle("Debug", systemImage: "slider.horizontal.3", isOn: $avatarSession.showDebug)
+            bluetoothButton
         }
         .toggleStyle(.button)
         .padding(8)
