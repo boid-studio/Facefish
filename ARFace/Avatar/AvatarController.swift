@@ -151,10 +151,13 @@ final class AvatarController {
             } ?? targetRotation
 
             lastFinAngles = finAngles(for: state.headRotation)
-            lastBlendShapes = state.blendShapes
+            // Resting face removed, pucker beats funnel, closed lips raise the jaw (FaceCalibration).
+            FaceCalibration.shared.feed(state.blendShapes)
+            let faceWeights = FaceCalibration.shared.adjusted(state.blendShapes)
+            lastBlendShapes = faceWeights
             for location in boundLocations.union([.jawOpen, .mouthFunnel, .mouthClose]) {
                 let source = mirrored ? BlendShapeMapping.mirrored(location) : location
-                let targetWeight = state.blendShapes[source] ?? 0
+                let targetWeight = faceWeights[source] ?? 0
                 let timeConstant: TimeInterval
                 switch location {
                 case .eyeBlinkLeft, .eyeBlinkRight:
