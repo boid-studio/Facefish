@@ -33,6 +33,16 @@ struct RenderingDebugSection: View {
                 .monospacedDigit()
         }
 
+        VStack(alignment: .leading) {
+            LabeledContent("Camera Z") {
+                Text("\(model.cameraZ, specifier: "%.2f") m")
+                    .monospacedDigit()
+            }
+            Slider(value: $model.cameraZ, in: 0.1...3, step: 0.01) {
+                Text("Camera Z")
+            }
+        }
+
         Toggle("Caustic shaders", isOn: $model.causticsEnabled)
         Toggle("Ambient bubbles", isOn: $model.ambientBubblesEnabled)
         Toggle("Mouth bubbles", isOn: $model.mouthBubblesEnabled)
