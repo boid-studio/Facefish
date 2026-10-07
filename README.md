@@ -33,7 +33,13 @@ between reflected and direct movement. The avatar follows head orientation and
 facial expressions, including mouth and jaw movement. Its tail and pectoral fins
 respond to head turns and nods with damped motion, while a gentle swimming sway
 continues at rest. Opening the mouth makes the swimming more energetic and emits
-a small bubble burst. If tracking is lost, the fins transition to an idle sway.
+a randomized burst of 7-11 bubbles over roughly half a second from the center of
+the mouth, mostly small bubbles with one or two larger ones. They spread outward with
+a fast forward launch in the fish's facing direction, slow down, and float upward
+with turbulent drift independently of subsequent head movement. Mouth bubbles
+keep their full size until they disappear.
+Close and reopen the mouth to emit another burst. If tracking is lost, the fins
+transition to an idle sway.
 
 The underwater scene also includes rising ambient bubbles, animated spotlights,
 shadows, and caustic lighting. Rendering updates and debug animation playback

@@ -42,7 +42,7 @@ struct AvatarView: View {
                 underwater.applyCaustics(to: model)
                 let controller = AvatarController(model: model)
                 controller.mirrored = mirrored
-                content.add(controller.root)
+                content.add(controller.sceneRoot)
                 updateSubscription = content.subscribe(to: SceneEvents.Update.self) { event in
                     avatarDebug.recordFrame(deltaTime: event.deltaTime)
                     let options = avatarDebug.renderOptions

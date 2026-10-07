@@ -11,6 +11,8 @@ final class BubbleSphereSystem {
         var age: Float = 0
         var life: Float = 0
         var radius: Float = 0
+        var turbulencePhase: Float = 0
+        var turbulenceRate: Float = 1
     }
 
     private let parent: Entity
@@ -25,6 +27,9 @@ final class BubbleSphereSystem {
     private let damping: Float
     private let spawnRadius: SIMD3<Float>
     private let radius: Float
+    private let directionalSpread: Float
+    private let turbulence: Float
+    private let shrinksAtEndOfLife: Bool
     private var emissionRemainder: Float = 0
 
     init(
@@ -38,7 +43,10 @@ final class BubbleSphereSystem {
         speedVariation: Float,
         acceleration: SIMD3<Float>,
         damping: Float,
-        spawnRadius: SIMD3<Float>
+        spawnRadius: SIMD3<Float>,
+        directionalSpread: Float = 0.12,
+        turbulence: Float = 0,
+        shrinksAtEndOfLife: Bool = true
     ) {
         self.parent = parent
         self.radius = radius
@@ -51,6 +59,9 @@ final class BubbleSphereSystem {
         self.acceleration = acceleration
         self.damping = damping
         self.spawnRadius = spawnRadius
+        self.directionalSpread = directionalSpread
+        self.turbulence = turbulence
+        self.shrinksAtEndOfLife = shrinksAtEndOfLife
         self.bubbles = []
         self.bubbles.reserveCapacity(capacity)
 
@@ -80,11 +91,17 @@ final class BubbleSphereSystem {
         return fallback
     }
 
-    func emit(count: Int) {
+    func emit(
+        count: Int,
+        origin: SIMD3<Float> = .zero,
+        direction: SIMD3<Float>? = nil,
+        radiusScale: Float = 1,
+        speedScale: Float = 1
+    ) {
         guard count > 0 else { return }
         for _ in 0..<count {
             guard let index = bubbles.firstIndex(where: { !$0.entity.isEnabled }) else { return }
-            spawn(index: index)
+            spawn(index: index, origin: origin, direction: direction, radiusScale: radiusScale, speedScale: speedScale)
         }
     }
 
@@ -119,27 +136,48 @@ final class BubbleSphereSystem {
                 0,
                 cos(time * 1.7 + Float(index)) * 0.002
             )
-            bubbles[index].entity.position += (bubbles[index].velocity + wobble) * dt
+            let phase = bubble.turbulencePhase
+            let driftTime = bubble.age * bubble.turbulenceRate
+            let drift = SIMD3<Float>(
+                sin(driftTime * 5.3 + phase),
+                sin(driftTime * 3.7 + phase) * 0.3,
+                cos(driftTime * 4.7 + phase)
+            ) * turbulence
+            bubbles[index].entity.position += (bubbles[index].velocity + wobble + drift) * dt
 
             let fadeIn = min(1, bubble.age / 0.12)
-            let fadeOut = min(1, remaining / 0.5)
+            let fadeOut: Float = shrinksAtEndOfLife ? min(1, remaining / 0.5) : 1
             let fade = min(fadeIn, fadeOut)
             bubbles[index].entity.scale = SIMD3(repeating: bubble.radius * fade)
         }
     }
 
-    private func spawn(index: Int) {
-        let direction = SIMD3<Float>(
+    private func spawn(
+        index: Int,
+        origin: SIMD3<Float>,
+        direction: SIMD3<Float>?,
+        radiusScale: Float,
+        speedScale: Float
+    ) {
+        let launchDirection = direction.map {
+            $0 + SIMD3<Float>(
+                Float.random(in: -directionalSpread...directionalSpread),
+                Float.random(in: -directionalSpread...directionalSpread),
+                Float.random(in: -directionalSpread...directionalSpread)
+            )
+        } ?? SIMD3<Float>(
             Float.random(in: -0.5...0.5),
             1,
             Float.random(in: 0.1...0.8)
         )
-        let normalizedDirection = simd_normalize(direction)
+        let normalizedDirection = simd_normalize(launchDirection)
         bubbles[index].age = 0
         bubbles[index].life = max(0.1, lifeSpan + Float.random(in: -lifeVariation...lifeVariation))
-        bubbles[index].radius = radius * Float.random(in: 0.75...1.25)
-        bubbles[index].velocity = normalizedDirection * (speed + Float.random(in: -speedVariation...speedVariation))
-        bubbles[index].entity.position = SIMD3(
+        bubbles[index].radius = radius * radiusScale * Float.random(in: 0.75...1.25)
+        bubbles[index].velocity = normalizedDirection * (speed + Float.random(in: -speedVariation...speedVariation)) * speedScale
+        bubbles[index].turbulencePhase = Float.random(in: 0...(2 * .pi))
+        bubbles[index].turbulenceRate = Float.random(in: 0.75...1.3)
+        bubbles[index].entity.position = origin + SIMD3(
             Float.random(in: -spawnRadius.x...spawnRadius.x),
             Float.random(in: -spawnRadius.y...spawnRadius.y),
             Float.random(in: -spawnRadius.z...spawnRadius.z)
