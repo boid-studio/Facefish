@@ -193,6 +193,9 @@ extension BluetoothControl: @preconcurrency CBCentralManagerDelegate {
         if central.state == .poweredOn {
             startScanning()
         } else if central.state == .unknown || central.state == .resetting {
+            let shouldResumePairing = isPairing
+            stop()
+            isPairing = shouldResumePairing
             status = stateDescription(central.state)
         } else {
             let message = stateDescription(central.state)
