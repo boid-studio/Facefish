@@ -52,17 +52,25 @@ struct ContentView: View {
         .sheet(isPresented: $showBluetooth) { BluetoothControlView(showsDone: true) }
         .onAppear {
             tracker.setDebugEnabled(avatarSession.showDebug)
-            if !bluetooth.isControlMode { tracker.start() }
+            if !bluetooth.isControlMode {
+                tracker.start()
+                if tracker.isSupported { avatarSession.audioMonitor.start() }
+            }
         }
-        .onDisappear { tracker.stop() }
+        .onDisappear {
+            tracker.stop()
+            avatarSession.audioMonitor.stop()
+        }
         .onChange(of: avatarSession.showDebug) { _, enabled in tracker.setDebugEnabled(enabled) }
         .onChange(of: bluetooth.isControlMode) { _, isControlMode in
             if isControlMode {
                 showBluetooth = false
                 avatarSession.showDebug = false
                 tracker.stop()
+                avatarSession.audioMonitor.stop()
             } else if scenePhase == .active {
                 tracker.start()
+                if tracker.isSupported { avatarSession.audioMonitor.start() }
             }
         }
         .onChange(of: scenePhase) { _, phase in

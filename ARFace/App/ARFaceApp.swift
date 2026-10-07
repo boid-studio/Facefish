@@ -27,6 +27,7 @@ final class AvatarSession {
     static let shared = AvatarSession()
 
     let tracker = FaceTracker()
+    let audioMonitor = AudioLevelMonitor()
     let avatarDebug = AvatarDebugModel()
     var mirrored = true
     var showDebug = false

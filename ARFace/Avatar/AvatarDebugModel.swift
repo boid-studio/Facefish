@@ -6,6 +6,7 @@ struct AvatarRenderOptions {
     let causticsEnabled: Bool
     let ambientBubblesEnabled: Bool
     let mouthBubblesEnabled: Bool
+    let audioBubblesEnabled: Bool
     let spotlightsEnabled: Bool
     let shadowsEnabled: Bool
     let blendShapesEnabled: Bool
@@ -52,6 +53,7 @@ final class AvatarDebugModel {
     var causticsEnabled = true
     var ambientBubblesEnabled = true
     var mouthBubblesEnabled = true
+    var audioBubblesEnabled = true
     var spotlightsEnabled = true
     var shadowsEnabled = true
     var blendShapesEnabled = true
@@ -66,6 +68,7 @@ final class AvatarDebugModel {
             causticsEnabled: causticsEnabled,
             ambientBubblesEnabled: ambientBubblesEnabled,
             mouthBubblesEnabled: mouthBubblesEnabled,
+            audioBubblesEnabled: audioBubblesEnabled,
             spotlightsEnabled: spotlightsEnabled,
             shadowsEnabled: shadowsEnabled,
             blendShapesEnabled: blendShapesEnabled,

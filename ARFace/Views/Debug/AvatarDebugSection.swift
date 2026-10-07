@@ -43,6 +43,7 @@ struct RenderingDebugSection: View {
         Toggle("Caustic shaders", isOn: $model.causticsEnabled)
         Toggle("Ambient bubbles", isOn: $model.ambientBubblesEnabled)
         Toggle("Mouth bubbles", isOn: $model.mouthBubblesEnabled)
+        Toggle("Audio bubbles", isOn: $model.audioBubblesEnabled)
         Toggle("Animated spotlights", isOn: $model.spotlightsEnabled)
         Toggle("Directional shadow", isOn: $model.shadowsEnabled)
         Toggle("Blend shapes", isOn: $model.blendShapesEnabled)
