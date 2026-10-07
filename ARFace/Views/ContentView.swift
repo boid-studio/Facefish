@@ -36,8 +36,10 @@ struct ContentView: View {
                     .overlay(alignment: .topTrailing) {
                         if avatarSession.showDebug { CameraDebugView(tracker: tracker).padding(.top, 48).padding(.trailing, 12) }
                     }
-                    .safeAreaInset(edge: .bottom) { controls }
-                    .inspector(isPresented: $avatarSession.showDebug) { DebugInspector() }
+                    .overlay(alignment: .bottomTrailing) { settingsButton }
+                    .inspector(isPresented: $avatarSession.showDebug) {
+                        DebugInspector(onShowControl: { showBluetooth = true })
+                    }
             } else {
                 ContentUnavailableView(
                     "Face tracking unavailable",
@@ -79,16 +81,19 @@ struct ContentView: View {
         }
     }
 
-    private var controls: some View {
-        HStack(spacing: 12) {
-            Toggle("Mirror", systemImage: "arrow.left.and.right", isOn: $avatarSession.mirrored)
-            Toggle("Debug", systemImage: "slider.horizontal.3", isOn: $avatarSession.showDebug)
-            bluetoothButton
+    private var settingsButton: some View {
+        Button {
+            avatarSession.showDebug.toggle()
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
         }
-        .toggleStyle(.button)
-        .padding(8)
-        .background(.ultraThinMaterial, in: Capsule())
-        .padding(.bottom, 8)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Settings")
+        .padding(.bottom, 24)
+        .padding(.trailing, 16)
     }
 }
 

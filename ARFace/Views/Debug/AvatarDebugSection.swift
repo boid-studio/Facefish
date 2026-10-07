@@ -11,9 +11,6 @@ struct AvatarDebugSection: View {
             TimelineView(.periodic(from: .now, by: 0.1)) { _ in
                 VStack(spacing: 4) {
                     LabeledContent("Targets bound", value: "\(controller.boundLocations.count)/52")
-                    LabeledContent("Applied jawOpen") {
-                        Text(controller.appliedJawOpen, format: .number.precision(.fractionLength(2)))
-                    }
                 }
                 .monospacedDigit()
             }
@@ -38,7 +35,7 @@ struct RenderingDebugSection: View {
                 Text("\(model.cameraZ, specifier: "%.2f") m")
                     .monospacedDigit()
             }
-            Slider(value: $model.cameraZ, in: 0.1...3, step: 0.01) {
+            Slider(value: $model.cameraZ, in: 0.1...3) {
                 Text("Camera Z")
             }
         }
