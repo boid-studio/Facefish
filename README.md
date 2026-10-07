@@ -60,7 +60,9 @@ expanded state between launches:
   Adjust how many blend shapes are listed with the stepper.
 - **Avatar** reports where the avatar is rendered, how many blend-shape targets
   were bound, and the applied `jawOpen` value.
-- **Rendering** reports frame rate and provides switches for caustics, ambient
+- **Rendering** reports frame rate and includes a **Camera Z** slider to adjust
+  the virtual camera's distance from 0.10 to 3.00 meters (default: 0.75 meters),
+  including when the avatar is rendered on an external display. It provides switches for caustics, ambient
   and mouth bubbles, animated spotlights, directional shadows, blend shapes,
   and fin animation.
 - **Animations** lets you filter the avatar's animations, play one once, loop it,

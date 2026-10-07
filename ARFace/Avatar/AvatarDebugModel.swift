@@ -46,6 +46,7 @@ final class AvatarDebugModel {
     private(set) var loopingAnimationIDs: Set<AvatarAnimation.ID> = []
     private(set) var framesPerSecond: Double = 0
 
+    var cameraZ: Float = 0.75
     var causticsEnabled = true
     var ambientBubblesEnabled = true
     var mouthBubblesEnabled = true

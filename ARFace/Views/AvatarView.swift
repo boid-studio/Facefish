@@ -23,7 +23,7 @@ struct AvatarView: View {
 
             let camera = PerspectiveCamera()
             camera.camera.fieldOfViewInDegrees = 35
-            camera.position = [0, 0, 0.75]
+            camera.position = [0, 0, avatarDebug.cameraZ]
             content.add(camera)
 
             do {
@@ -58,7 +58,10 @@ struct AvatarView: View {
                 guard isVisible, sceneID == loadingSceneID else { return }
                 loadError = "Couldn't load scene: \(error.localizedDescription)"
             }
-        } update: { _ in
+        } update: { content in
+            for case let camera as PerspectiveCamera in content.entities {
+                camera.position.z = avatarDebug.cameraZ
+            }
             controller?.mirrored = mirrored
         }
         .id(sceneID)
