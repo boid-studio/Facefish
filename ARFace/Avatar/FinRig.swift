@@ -57,11 +57,16 @@ final class FinRig {
         var tail = [Float](repeating: 0, count: 3)
         var pectoralFlap = Array(repeating: [Float](repeating: 0, count: 2), count: 2)
         var pectoralSweep = Array(repeating: [Float](repeating: 0, count: 2), count: 2)
+        /// Dorsal (top) fin, root to tip: sideways bend (about each joint's local Z, + toward the
+        /// fish's right) and fore-aft lean (about local X, + toward the front).
+        var dorsalSide = [Float](repeating: 0, count: 3)
+        var dorsalLean = [Float](repeating: 0, count: 3)
     }
 
     private enum JointMotion {
         case tail(Int)
         case pectoralFlap(side: Int, index: Int)
+        case dorsal(Int)
     }
 
     private struct JointBinding {
@@ -93,6 +98,8 @@ final class FinRig {
     private var tailSprings = [Spring](repeating: Spring(), count: 3)
     private var flapSprings = Array(repeating: [Spring](repeating: Spring(), count: 2), count: 2)
     private var sweepSprings = Array(repeating: [Spring](repeating: Spring(), count: 2), count: 2)
+    private var dorsalSideSprings = [Spring](repeating: Spring(), count: 3)
+    private var dorsalLeanSprings = [Spring](repeating: Spring(), count: 3)
     private var lastTurn: Float?
     private var lastNod: Float?
     private var lastTrackedTurn: Float = 0
@@ -215,6 +222,27 @@ final class FinRig {
             }
         }
 
+        // Dorsal fin: it lags behind turns (the tip trails to the outside of the turn: turning
+        // toward the fish's left bends it right) and leans against nods; each joint follows the
+        // one below it, so the bend travels up to the tip and wobbles out. A slow sway at rest.
+        let dorsalSideTarget = min(max(turnRate * 0.25 * finReaction, -0.5), 0.5)
+        let dorsalLeanTarget = min(max(-nodRate * 0.2 * finReaction, -0.35), 0.35)
+        for _ in 0..<steps {
+            var side = dorsalSideTarget
+            var lean = dorsalLeanTarget
+            for index in 0..<3 {
+                dorsalSideSprings[index].step(to: side, stiffness: 60, ratio: 0.3, deltaTime: stepTime)
+                dorsalLeanSprings[index].step(to: lean, stiffness: 60, ratio: 0.3, deltaTime: stepTime)
+                side = dorsalSideSprings[index].angle
+                lean = dorsalLeanSprings[index].angle
+            }
+        }
+        for index in 0..<3 {
+            pose.dorsalSide[index] = dorsalSideSprings[index].angle
+                + 0.06 * finSway * energy * sin(3.2 * time - 0.8 * Float(index) + 0.5)
+            pose.dorsalLean[index] = dorsalLeanSprings[index].angle
+        }
+
         apply(pose)
         updateWaves(mouthOpen: mouthOpen, deltaTime: deltaTime)
     }
@@ -243,6 +271,9 @@ final class FinRig {
                 case "pecl2": motion = .pectoralFlap(side: 0, index: 1)
                 case "pecr0", "pecr1": motion = .pectoralFlap(side: 1, index: 0)
                 case "pecr2": motion = .pectoralFlap(side: 1, index: 1)
+                case "dorsal1": motion = .dorsal(0)
+                case "dorsal2": motion = .dorsal(1)
+                case "dorsal3": motion = .dorsal(2)
                 default: motion = nil
                 }
                 guard let motion else { return nil }
@@ -270,6 +301,10 @@ final class FinRig {
                     transform.rotation = transform.rotation
                         * simd_quatf(angle: pose.pectoralFlap[side][index], axis: [1, 0, 0])
                         * simd_quatf(angle: pose.pectoralSweep[side][index], axis: [0, 0, 1])
+                case let .dorsal(index):
+                    transform.rotation = transform.rotation
+                        * simd_quatf(angle: pose.dorsalSide[index], axis: [0, 0, 1])
+                        * simd_quatf(angle: pose.dorsalLean[index], axis: [1, 0, 0])
                 }
                 transforms[joint.index] = transform
             }
