@@ -40,6 +40,8 @@ struct RenderingDebugSection: View {
         Toggle("Directional shadow", isOn: $model.shadowsEnabled)
         Toggle("Blend shapes", isOn: $model.blendShapesEnabled)
         Toggle("Fin animation", isOn: $model.finAnimationEnabled)
+        Toggle("Eye movement", isOn: $model.eyeMovementEnabled)
+        Toggle("Eyelids", isOn: $model.eyelidsEnabled)
     }
 }
 

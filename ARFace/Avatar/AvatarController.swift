@@ -32,6 +32,8 @@ final class AvatarController {
     private var smoothedBlendShapes: [ARFaceAnchor.BlendShapeLocation: Float] = [:]
     private let logger = Logger(subsystem: "ARFace", category: "Avatar")
     private let finRig: FinRig
+    private let eyeRig: EyeRig
+    private let lidRig: LidRig
     private var finNeutralRotation: simd_quatf?
 
     private(set) var boundLocations: Set<ARFaceAnchor.BlendShapeLocation> = []
@@ -49,6 +51,8 @@ final class AvatarController {
 
     init(model: Entity, targetSize: Float = 0.25) {
         finRig = FinRig(model: model)
+        eyeRig = EyeRig(model: model)
+        lidRig = LidRig(model: model)
         fit(model, targetSize: targetSize)
         root.addChild(model)
 
@@ -92,6 +96,8 @@ final class AvatarController {
         let causticsChanged = options.causticsEnabled != causticsEnabled
         causticsEnabled = options.causticsEnabled
         finRig.setEnabled(options.finAnimationEnabled, refreshMaterials: causticsChanged)
+        eyeRig.setEnabled(options.eyeMovementEnabled)
+        lidRig.setEnabled(options.eyelidsEnabled)
 
         var turn: Float?
         var nod: Float?
@@ -126,6 +132,14 @@ final class AvatarController {
                 let previousWeight = smoothedBlendShapes[location] ?? targetWeight
                 smoothedBlendShapes[location] = previousWeight + alpha * (targetWeight - previousWeight)
             }
+            let mirrored = self.mirrored
+            let blendShapes = state.blendShapes
+            let weight: (ARFaceAnchor.BlendShapeLocation) -> Float = {
+                blendShapes[mirrored ? BlendShapeMapping.mirrored($0) : $0] ?? 0
+            }
+            eyeRig.update(weight: weight, deltaTime: deltaTime)
+            lidRig.update(weight: weight, deltaTime: deltaTime)
+
             appliedJawOpen = smoothedBlendShapes[.jawOpen] ?? 0
             let mouthFunnel = smoothedBlendShapes[.mouthFunnel] ?? 0
             let mouthClose = smoothedBlendShapes[.mouthClose] ?? 0
@@ -145,6 +159,8 @@ final class AvatarController {
             }
         } else {
             resetSmoothing()
+            eyeRig.update(weight: nil, deltaTime: deltaTime)
+            lidRig.update(weight: nil, deltaTime: deltaTime)
             appliedJawOpen = 0
             updateMouthBubbles(jawOpen: 0)
         }

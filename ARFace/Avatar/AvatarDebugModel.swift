@@ -10,6 +10,8 @@ struct AvatarRenderOptions {
     let shadowsEnabled: Bool
     let blendShapesEnabled: Bool
     let finAnimationEnabled: Bool
+    let eyeMovementEnabled: Bool
+    let eyelidsEnabled: Bool
 }
 
 struct AvatarAnimation: Identifiable {
@@ -51,6 +53,8 @@ final class AvatarDebugModel {
     var shadowsEnabled = true
     var blendShapesEnabled = true
     var finAnimationEnabled = true
+    var eyeMovementEnabled = true
+    var eyelidsEnabled = true
 
     var renderOptions: AvatarRenderOptions {
         AvatarRenderOptions(
@@ -60,7 +64,9 @@ final class AvatarDebugModel {
             spotlightsEnabled: spotlightsEnabled,
             shadowsEnabled: shadowsEnabled,
             blendShapesEnabled: blendShapesEnabled,
-            finAnimationEnabled: finAnimationEnabled
+            finAnimationEnabled: finAnimationEnabled,
+            eyeMovementEnabled: eyeMovementEnabled,
+            eyelidsEnabled: eyelidsEnabled
         )
     }
 
