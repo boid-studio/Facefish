@@ -56,6 +56,7 @@ struct ContentView: View {
         .onChange(of: avatarSession.showDebug) { _, enabled in tracker.setDebugEnabled(enabled) }
         .onChange(of: bluetooth.isControlMode) { _, isControlMode in
             if isControlMode {
+                showBluetooth = false
                 avatarSession.showDebug = false
                 tracker.stop()
             } else if scenePhase == .active {

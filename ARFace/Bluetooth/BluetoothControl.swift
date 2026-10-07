@@ -403,10 +403,14 @@ extension BluetoothControl: @preconcurrency CBPeripheralManagerDelegate {
 
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         guard let request = requests.first else { return }
-        guard requests.count == 1, !isControlMode, isConnected,
+        guard !isControlMode, isConnected,
               request.central.identifier == authorizedCentral,
               request.characteristic === hostedCharacteristic else {
             peripheral.respond(to: request, withResult: .insufficientAuthorization)
+            return
+        }
+        guard requests.count == 1 else {
+            peripheral.respond(to: request, withResult: .requestNotSupported)
             return
         }
         guard request.offset == 0 else {
