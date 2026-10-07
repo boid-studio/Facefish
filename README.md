@@ -1,57 +1,81 @@
 # Facefish
 
-Facefish is a project that involves facial recognition and augmented reality features using RealityKit. This repository contains the necessary code and resources to build and run the application on iOS devices.
+Facefish is an iOS app that uses ARKit face tracking and RealityKit to drive an
+animated fish avatar. The avatar appears in an underwater scene with animated
+lighting, caustics, and bubbles.
 
-## Square external display output
+## Requirements
 
-The external avatar uses a square canvas sized to the external window's height,
-then stretches horizontally to fill the negotiated output. For a 1920 x 1200
-output, this is a 1200 x 1200 canvas with a 1.6x horizontal pre-stretch, compensating
-for a square panel that squeezes the entire incoming image to fit.
+- iOS 18 or later
+- An iPhone or iPad with a TrueDepth (Face ID) camera for face tracking
+- Xcode to build and run the app
+- An external display is optional
 
-This compensation applies to all external displays; it assumes a square panel
-with full-image stretching, not cropping or letterboxing. It adapts to window
-size changes and does not change the HDMI signal resolution.
+Face tracking is not available in the simulator or on devices without a
+TrueDepth camera.
 
-While an external display is connected, the phone shows a lightweight connection
-screen instead of rendering a second 3D scene. Face tracking, Mirror/Debug controls,
-tracking status, camera preview, and display diagnostics remain available on the
-phone. The phone's avatar rendering resumes automatically on disconnect.
-Scene update subscriptions and debug animations are stopped when an avatar view
-is removed. External rendering quality and square compensation are unchanged.
+## Build and run
+
+1. Open `ARFace.xcodeproj` in Xcode.
+2. Select the `ARFace` scheme and a compatible iPhone or iPad.
+3. Build and run the app, then allow camera access when prompted.
+
+## Using the app
+
+The live face-tracked avatar is mirrored by default. Use **Mirror** to switch
+between reflected and direct movement. The avatar follows head orientation and
+facial expressions, including mouth and jaw movement. Its tail and pectoral fins
+respond to head turns and nods with damped motion, while a gentle swimming sway
+continues at rest. Opening the mouth makes the swimming more energetic and emits
+a small bubble burst. If tracking is lost, the fins transition to an idle sway.
+
+The underwater scene also includes rising ambient bubbles, animated spotlights,
+shadows, and caustic lighting. Rendering updates and debug animation playback
+stop when an avatar view is removed.
+
+## External display
+
+When an external display connects, the app attempts to select a square display
+mode, preferring 1080 × 1080 or the available square mode closest to that size.
+If no square mode is available, it leaves the current mode unchanged. The avatar
+is rendered in a square canvas fitted to the external scene; the phone shows a
+connection screen instead of rendering a second avatar. Face tracking and the
+phone's Mirror and Debug controls remain available. The phone resumes avatar
+rendering automatically when the external display disconnects.
 
 ## Debug inspector
 
-Enable **Debug** on the phone to open the debug inspector: a trailing column on
-iPad, or a resizable sheet on iPhone. While debug is on, a small camera preview
-floats in the top-trailing corner. The inspector has collapsible sections, and
-their expanded state is remembered between launches:
+Turn on **Debug** on the phone to open the inspector. It appears as a trailing
+column on iPad or a resizable sheet on iPhone, with a small live camera preview
+in the top-trailing corner. The inspector's collapsible sections remember their
+expanded state between launches:
 
-- **Tracking**: tracking status/errors and the top N blend shapes (N adjustable).
-- **Avatar**: where the avatar is rendered, bound blend-shape targets, applied jawOpen.
-- **Animations**: filter, play once, loop, and stop all avatar animations. When an
-  external display is connected, this drives the avatar on that display.
-- **External display** (only while connected): screen and scene dimensions,
-  native pixel dimensions and aspect ratio, display scales, square canvas size and
-  horizontal pre-stretch, maximum refresh rate, current/preferred/available modes,
-  and overscan settings, refreshed once per second.
+- **Tracking** shows tracking status or errors and the most active blend shapes.
+  Adjust how many blend shapes are listed with the stepper.
+- **Avatar** reports where the avatar is rendered, how many blend-shape targets
+  were bound, and the applied `jawOpen` value.
+- **Rendering** reports frame rate and provides switches for caustics, ambient
+  and mouth bubbles, animated spotlights, directional shadows, blend shapes,
+  and fin animation.
+- **Animations** lets you filter the avatar's animations, play one once, loop it,
+  or stop all animations. When connected to an external display, these controls
+  operate on the externally rendered avatar.
+- **External display**, shown only while connected, reports screen and scene
+  geometry, native dimensions and aspect ratio, display scales, refresh rate,
+  current, available, and preferred modes, and overscan settings. Choose an
+  available resolution with the picker or use **Auto-select square (1080x1080)**.
 
-Collapsed sections stop refreshing. The external display always shows only the
-avatar, without debug UI.
+Display diagnostics are reported by iOS and cannot identify a panel's physical
+aspect ratio or any stretching, cropping, or letterboxing done by the panel or
+adapter. The resolution picker and auto-select button can change the display
+mode; the other diagnostics are informational.
 
-These values are reported by iOS; they do not reveal the panel's physical aspect
-ratio or any stretching/cropping performed by the display or HDMI adapter.
-Diagnostics do not change the output mode or avatar layout.
+## Fish asset
 
-## Fish fin motion
-
-The fish's tail and pectoral bones react to head turns and nods with damped,
-chained springs; gentle swimming continues at rest and becomes livelier as the
-mouth opens. If face tracking is lost, the fins transition to a small idle sway
-after 1.5 seconds. All four fins also receive a UV-mapped ripple in the Metal
-geometry modifier, layered with the existing caustic surface shader.
-
-The rig expects the `Tail_1`–`Tail_3` and `Pec_L_1`–`Pec_L_2` /
-`Pec_R_1`–`Pec_R_2` joint names and the `FinWave` second UV set in
-`fish.usdz`. Ripple tuning and the default reaction, swim, ripple-height, and
-ripple-speed values are defined in `FinRig.swift`.
+The fin rig uses the tail and pectoral joints in `fish.usdz` and applies UV-mapped
+waves to the tail, dorsal, and pectoral fins. Keep the expected joint names
+(`Tail_1`–`Tail_3`, `Pec_L_1`–`Pec_L_2`, and `Pec_R_1`–`Pec_R_2`) and the
+`FinWave` second UV set when replacing or editing the model. Eyelid meshes are
+excluded from general blink blend-shape binding and custom material overrides.
+Fin reaction, swim, ripple-height, and ripple-speed defaults are defined in
+`ARFace/Avatar/FinRig.swift`.
