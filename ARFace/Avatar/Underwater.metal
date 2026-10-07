@@ -13,6 +13,18 @@ static half3 waterColor(float y) {
     return t < 0.6 ? mix(deep, mid, half(t / 0.6)) : mix(mid, shallow, half((t - 0.6) / 0.4));
 }
 
+static half3 underwaterBackdrop(float3 position, float time) {
+    half3 color = waterColor(position.y);
+    float u = position.x;
+    float rays = 0;
+    rays += pow(saturate(sin(u * 23.0 + time * 0.23) * 0.5 + 0.5), 6.0);
+    rays += pow(saturate(sin(u * 13.7 - time * 0.17 + 1.3) * 0.5 + 0.5), 8.0) * 0.8;
+    rays += pow(saturate(sin(u * 37.3 + time * 0.31 + 4.1) * 0.5 + 0.5), 10.0) * 0.5;
+    rays += pow(saturate(sin(u * 51.9 - time * 0.27 + 2.6) * 0.5 + 0.5), 12.0) * 0.4;
+    float rayFade = pow(saturate((position.y + 0.5) / 1.2), 2.0);
+    return color + half3(0.35, 0.7, 0.8) * half(rays * rayFade * 0.35);
+}
+
 // Sunlight refracted through a wavy surface: brightness ~ 1/|det J| of the refraction map,
 // where J = I + focus * Hessian(height). Evaluated per channel with slightly different focus for dispersion.
 static half3 caustics(float2 p, float time, float focus) {
@@ -127,7 +139,7 @@ void finWavePectoral(realitykit::geometry_parameters params) {
     finWave(params, float3(-0.5769, 0.7816, -0.2373), 2.11);
 }
 
-// Unlit clear bubble: only a sharp sun highlight and a faint fresnel rim are visible; tint comes from base_color_tint.
+// Transparent fallback for systems without scene-color post-processing.
 [[visible]]
 void bubbleSurface(realitykit::surface_parameters params) {
     float3 normal = normalize(params.geometry().normal());
@@ -135,15 +147,30 @@ void bubbleSurface(realitykit::surface_parameters params) {
     float3 sun = normalize(float3(0.1, 1.0, 0.25));
 
     float nv = saturate(dot(normal, view));
-    float rim = pow(1.0 - nv, 3.0) * 0.45;
+    float3 reflected = reflect(-view, normal);
+    float fresnel = 0.0204 + 0.9796 * pow(1.0 - nv, 5.0);
+    half3 reflectedColor = mix(
+        half3(0.18, 0.42, 0.55),
+        half3(0.7, 0.9, 1.0),
+        half(saturate(reflected.y * 0.5 + 0.5))
+    );
+    float sunReflection = pow(saturate(dot(reflected, sun)), 160.0);
     float spec = pow(saturate(dot(normal, normalize(sun + view))), 90.0);
+    float surfaceReflection = smoothstep(0.45, 0.95, reflected.y)
+        * smoothstep(0.05, 0.3, normal.y);
 
     half3 tint = half3(params.material_constants().base_color_tint());
-    half3 color = tint * half(rim + spec * 4.0);
+    float reflectionWeight = 0.22 * fresnel;
+    float highlightWeight = saturate(spec * 0.7 + sunReflection * 0.5 + surfaceReflection * 0.6);
+    float opacity = reflectionWeight + highlightWeight;
+    half3 color = (
+        reflectedColor * half(reflectionWeight)
+        + tint * half(highlightWeight)
+    ) / half(max(opacity, 0.001));
 
     params.surface().set_base_color(color);
     params.surface().set_emissive_color(color);
-    params.surface().set_opacity(half(saturate(rim + spec)));
+    params.surface().set_opacity(half(saturate(opacity)));
 }
 
 [[visible]]
@@ -159,16 +186,7 @@ void backdropSurface(realitykit::surface_parameters params) {
     float3 position = params.geometry().world_position();
     float time = params.uniforms().time();
 
-    half3 color = waterColor(position.y);
-
-    float u = position.x;
-    float rays = 0;
-    rays += pow(saturate(sin(u * 23.0 + time * 0.23) * 0.5 + 0.5), 6.0);
-    rays += pow(saturate(sin(u * 13.7 - time * 0.17 + 1.3) * 0.5 + 0.5), 8.0) * 0.8;
-    rays += pow(saturate(sin(u * 37.3 + time * 0.31 + 4.1) * 0.5 + 0.5), 10.0) * 0.5;
-    rays += pow(saturate(sin(u * 51.9 - time * 0.27 + 2.6) * 0.5 + 0.5), 12.0) * 0.4;
-    float rayFade = pow(saturate((position.y + 0.5) / 1.2), 2.0);
-    color += half3(0.35, 0.7, 0.8) * half(rays * rayFade * 0.35);
+    half3 color = underwaterBackdrop(position, time);
 
     params.surface().set_base_color(color);
     params.surface().set_emissive_color(color);

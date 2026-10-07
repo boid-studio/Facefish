@@ -68,7 +68,9 @@ final class AvatarController {
     private var blendShapesEnabled = true
     private var causticsEnabled = true
 
-    init(model: Entity, targetSize: Float = 0.25) {
+    var glassSpheres: [SIMD4<Float>] { mouthBubbleSpheres?.glassSpheres ?? [] }
+
+    init(model: Entity, targetSize: Float = 0.25, screenSpaceGlass: Bool = false) {
         finRig = FinRig(model: model)
         eyeRig = EyeRig(model: model)
         lidRig = LidRig(model: model)
@@ -101,12 +103,13 @@ final class AvatarController {
                 lifeVariation: 0.4,
                 speed: 0.32,
                 speedVariation: 0.07,
-                acceleration: [0, 0.21, 0],
-                damping: 1.8,
+                acceleration: BubbleSphereSystem.risingAcceleration,
+                damping: BubbleSphereSystem.risingDamping,
                 spawnRadius: [0.008, 0.006, 0.006],
                 directionalSpread: 0.55,
-                turbulence: 0.035,
-                shrinksAtEndOfLife: false
+                turbulence: BubbleSphereSystem.risingTurbulence,
+                shrinksAtEndOfLife: false,
+                screenSpaceGlass: screenSpaceGlass
             )
         } else {
             logger.error("Fish model is missing Head; mouth bubble emission is disabled.")

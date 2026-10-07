@@ -41,9 +41,31 @@ keep their full size until they disappear.
 Close and reopen the mouth to emit another burst. If tracking is lost, the fins
 transition to an idle sway.
 
-The underwater scene also includes rising ambient bubbles, animated spotlights,
-shadows, and caustic lighting. Rendering updates and debug animation playback
+The underwater scene also includes rising ambient bubbles with the same buoyancy,
+drag, and turbulent drift as mouth bubbles, animated spotlights,
+shadows, and caustic lighting. On iOS 26 and later, bubbles are rendered as glass
+spheres in a Metal post-processing pass. This traces both refractive interfaces
+and samples the actual rendered scene, so the fish and lighting behind bubbles
+are visibly distorted. Refraction displacement is reduced to 25% strength for a
+subtler glass effect, without reducing reflections or highlights.
+Scene depth keeps bubbles behind foreground objects.
+Soft reflections, a broad upper highlight from the bright water surface, and
+bright specular highlights are composited directly, independent of
+scene lighting. This is screen-space refraction: off-screen objects and recursive
+refraction through overlapping bubbles are not available.
+On iOS 18-25, transparent sphere materials provide reflections and highlights
+without scene refraction. The same fallback is used, with an error logged, if the
+glass compute pipeline cannot be created.
+Rendering updates and debug animation playback
 stop when an avatar view is removed.
+
+## Glass rendering checks
+
+On a Metal-capable Mac, run `xcrun swift Tests/GlassBubbleRenderingChecks.swift`.
+The checks execute the production shader on the GPU against a patterned scene
+and verify background distortion, bright highlights, foreground occlusion,
+unchanged pixels outside the bubble, and conventional and reversed-Z depth.
+No camera or face-tracking device is required for these checks.
 
 ## External display
 
