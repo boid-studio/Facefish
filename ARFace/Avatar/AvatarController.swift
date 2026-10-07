@@ -35,6 +35,12 @@ final class AvatarController {
     private let eyeRig: EyeRig
     private let lidRig: LidRig
     private var finNeutralRotation: simd_quatf?
+    /// Seconds to ease between the rest pose and the tracked face when tracking is lost or found.
+    private static let trackingTransitionDuration: TimeInterval = 1.05
+    /// 0 = rest pose, 1 = following the face; ramps linearly and is eased when applied.
+    private var trackingPresence: Float = 0
+    private var lastBlendShapes: [ARFaceAnchor.BlendShapeLocation: Float]?
+    private var lastFinAngles: (turn: Float, nod: Float)?
 
     private(set) var boundLocations: Set<ARFaceAnchor.BlendShapeLocation> = []
     private(set) var appliedJawOpen: Float = 0
@@ -99,22 +105,31 @@ final class AvatarController {
         eyeRig.setEnabled(options.eyeMovementEnabled)
         lidRig.setEnabled(options.eyelidsEnabled)
 
-        var turn: Float?
-        var nod: Float?
-        var mouthOpen: Float = 0
-        if let state, state.isTracked {
+        // Tracking on/off eases between the rest pose and the live face instead of snapping.
+        let isTracked = state?.isTracked == true
+        let presenceStep = Float(deltaTime / Self.trackingTransitionDuration)
+        trackingPresence = isTracked
+            ? min(1, trackingPresence + presenceStep)
+            : max(0, trackingPresence - presenceStep)
+        let presence = Self.smootherstep(trackingPresence)
+        if presence == 0, !isTracked {
+            // Fully at rest: recalibrate the fins' neutral head pose on the next tracked frame.
+            finNeutralRotation = nil
+            lastFinAngles = nil
+        }
+
+        if let state, isTracked {
             let rotation = state.headRotation.vector
             let targetRotation = simd_normalize(mirrored
                 ? simd_quatf(vector: [rotation.x, -rotation.y, -rotation.z, rotation.w])
                 : state.headRotation)
             let headAlpha = Self.smoothingFactor(deltaTime: deltaTime, timeConstant: 0.04)
-            let displayedRotation = smoothedRotation.map {
+            smoothedRotation = smoothedRotation.map {
                 simd_slerp($0, targetRotation, headAlpha)
             } ?? targetRotation
-            smoothedRotation = displayedRotation
-            root.orientation = displayedRotation
 
-            (turn, nod) = finAngles(for: state.headRotation)
+            lastFinAngles = finAngles(for: state.headRotation)
+            lastBlendShapes = state.blendShapes
             for location in boundLocations.union([.jawOpen, .mouthFunnel, .mouthClose]) {
                 let source = mirrored ? BlendShapeMapping.mirrored(location) : location
                 let targetWeight = state.blendShapes[source] ?? 0
@@ -132,43 +147,60 @@ final class AvatarController {
                 let previousWeight = smoothedBlendShapes[location] ?? targetWeight
                 smoothedBlendShapes[location] = previousWeight + alpha * (targetWeight - previousWeight)
             }
+        }
+
+        // Without tracking, the last tracked pose stays as the "live" end of the blend while it fades out.
+        root.orientation = smoothedRotation.map {
+            simd_slerp(simd_quatf(ix: 0, iy: 0, iz: 0, r: 1), $0, presence)
+        } ?? simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+
+        if let blendShapes = lastBlendShapes {
             let mirrored = self.mirrored
-            let blendShapes = state.blendShapes
             let weight: (ARFaceAnchor.BlendShapeLocation) -> Float = {
-                blendShapes[mirrored ? BlendShapeMapping.mirrored($0) : $0] ?? 0
+                (blendShapes[mirrored ? BlendShapeMapping.mirrored($0) : $0] ?? 0) * presence
             }
             eyeRig.update(weight: weight, deltaTime: deltaTime)
             lidRig.update(weight: weight, deltaTime: deltaTime)
-
-            appliedJawOpen = smoothedBlendShapes[.jawOpen] ?? 0
-            let mouthFunnel = smoothedBlendShapes[.mouthFunnel] ?? 0
-            let mouthClose = smoothedBlendShapes[.mouthClose] ?? 0
-            mouthOpen = max(appliedJawOpen, 0.5 * mouthFunnel) * (1 - 0.85 * mouthClose)
-            if options.mouthBubblesEnabled {
-                updateMouthBubbles(jawOpen: appliedJawOpen)
-            }
-
-            if blendShapesEnabled {
-                for target in targets {
-                    guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
-                    for binding in target.bindings {
-                        component.weightSet[binding.setIndex].weights[binding.weightIndex] = smoothedBlendShapes[binding.location] ?? 0
-                    }
-                    target.entity.components.set(component)
-                }
-            }
         } else {
-            resetSmoothing()
             eyeRig.update(weight: nil, deltaTime: deltaTime)
             lidRig.update(weight: nil, deltaTime: deltaTime)
-            appliedJawOpen = 0
-            updateMouthBubbles(jawOpen: 0)
+        }
+
+        appliedJawOpen = (smoothedBlendShapes[.jawOpen] ?? 0) * presence
+        let mouthFunnel = (smoothedBlendShapes[.mouthFunnel] ?? 0) * presence
+        let mouthClose = (smoothedBlendShapes[.mouthClose] ?? 0) * presence
+        let mouthOpen = max(appliedJawOpen, 0.5 * mouthFunnel) * (1 - 0.85 * mouthClose)
+        if options.mouthBubblesEnabled {
+            updateMouthBubbles(jawOpen: appliedJawOpen)
+        }
+
+        if blendShapesEnabled {
+            for target in targets {
+                guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
+                for binding in target.bindings {
+                    component.weightSet[binding.setIndex].weights[binding.weightIndex] =
+                        (smoothedBlendShapes[binding.location] ?? 0) * presence
+                }
+                target.entity.components.set(component)
+            }
         }
 
         if options.mouthBubblesEnabled {
             mouthBubbleSpheres?.update(deltaTime: deltaTime)
         }
-        finRig.update(turn: turn, nod: nod, mouthOpen: mouthOpen, deltaTime: deltaTime)
+        // Once fully at rest, nil hands the fins over to their idle swim.
+        let finAngles = presence > 0 ? lastFinAngles : nil
+        finRig.update(
+            turn: finAngles.map { $0.turn * presence },
+            nod: finAngles.map { $0.nod * presence },
+            mouthOpen: mouthOpen,
+            deltaTime: deltaTime
+        )
+    }
+
+    /// Ease-in-out with zero velocity and acceleration at both ends.
+    private static func smootherstep(_ x: Float) -> Float {
+        x * x * x * (x * (x * 6 - 15) + 10)
     }
 
     private func setBlendShapesEnabled(_ enabled: Bool) {
