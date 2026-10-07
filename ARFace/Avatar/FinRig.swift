@@ -225,9 +225,11 @@ final class FinRig {
         rigs: inout [ModelRig]
     ) {
         let configuration = FinWaveConfiguration.matching(entity.name) ?? inheritedConfiguration
-        if let configuration, let model = entity as? ModelEntity,
+        if let model = entity as? ModelEntity,
            entity.components[ModelComponent.self] != nil {
-            waveTargets.append(WaveTarget(model: model, configuration: configuration))
+            if let configuration {
+                waveTargets.append(WaveTarget(model: model, configuration: configuration))
+            }
             let restTransforms = model.jointTransforms
             let joints = zip(model.jointNames, restTransforms).enumerated().compactMap { index, pair -> JointBinding? in
                 let name = pair.0.split(separator: "/").last.map(String.init) ?? pair.0

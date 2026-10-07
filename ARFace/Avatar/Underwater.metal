@@ -153,7 +153,7 @@ void backdropBaseSurface(realitykit::surface_parameters params) {
     params.surface().set_emissive_color(color);
 }
 
-// Unlit sea backdrop: depth gradient, slanted god rays and a shimmering surface band at the top.
+// Unlit sea backdrop: depth gradient and vertical god rays.
 [[visible]]
 void backdropSurface(realitykit::surface_parameters params) {
     float3 position = params.geometry().world_position();
@@ -161,7 +161,7 @@ void backdropSurface(realitykit::surface_parameters params) {
 
     half3 color = waterColor(position.y);
 
-    float u = position.x + position.y * 0.35;
+    float u = position.x;
     float rays = 0;
     rays += pow(saturate(sin(u * 23.0 + time * 0.23) * 0.5 + 0.5), 6.0);
     rays += pow(saturate(sin(u * 13.7 - time * 0.17 + 1.3) * 0.5 + 0.5), 8.0) * 0.8;
@@ -169,10 +169,6 @@ void backdropSurface(realitykit::surface_parameters params) {
     rays += pow(saturate(sin(u * 51.9 - time * 0.27 + 2.6) * 0.5 + 0.5), 12.0) * 0.4;
     float rayFade = pow(saturate((position.y + 0.5) / 1.2), 2.0);
     color += half3(0.35, 0.7, 0.8) * half(rays * rayFade * 0.35);
-
-    float surfaceBand = smoothstep(0.35, 0.65, position.y);
-    half3 shimmer = caustics(float2(position.x * 12.0, position.y * 40.0), time * 0.5, 5.0);
-    color += half3(0.5, 0.85, 0.95) * shimmer * half(surfaceBand * 0.5);
 
     params.surface().set_base_color(color);
     params.surface().set_emissive_color(color);
