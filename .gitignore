@@ -19,3 +19,4 @@ ARFace/Resources/fish_test.usdz
 build
 Packages/RealityKitContent/.build/
 Packages/RealityKitContent/.swiftpm/
+*.xcuserstate
