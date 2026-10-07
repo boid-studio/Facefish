@@ -48,9 +48,22 @@ export interface MappingConfig {
    * jittery), 1 is the original soft feel. The rates are divided by it.
    */
   smoothing: number;
+  /**
+   * Pucker wins over funnel: funnel is scaled by (1 - puckerPriority * pucker), so a narrow kiss
+   * mouth and an open "O" never pull the mouth inward at full strength together (the sides would
+   * cross). 0 = off, 1 = full.
+   */
+  puckerPriority: number;
+  /**
+   * The performer's resting face: one raw Face Cap value per blendshape, captured with
+   * captureNeutral(). Each value is rescaled to (raw - rest) / (1 - rest) before the gain, so the
+   * resting face reads 0 everywhere and a full expression still reaches 1. null = off.
+   */
+  faceNeutral: Float32Array | null;
 }
 
 export const DEFAULT_MAPPING: MappingConfig = {
+  faceNeutral: null,
   mirror: false,
   headSigns: { pitch: 1, yaw: 1, roll: 1 },
   headGain: 1,
@@ -64,11 +77,14 @@ export const DEFAULT_MAPPING: MappingConfig = {
   rateFast: 28,
   rateSlow: 14,
   smoothing: 0.3,
+  puckerPriority: 1,
 };
 
 /** Keys that need to react quickly (blinks, jaw). */
 const FAST_KEYS = new Set<PoseKey>([
   'jawOpen',
+  'turn',
+  'nod',
   'blinkL',
   'blinkR',
   'tongue',
@@ -93,13 +109,26 @@ const FAST_WEIGHTS = new Set<number>([
   BS.eyeLookOut_R,
 ]);
 
+/** A raw value relative to the performer's resting value: rest reads 0, 1 stays 1. */
+export function calibrate(raw: number, rest: number): number {
+  return rest >= 0.95 ? raw : Math.max(0, (raw - rest) / (1 - rest));
+}
+
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
-/** Index of the opposite-side shape for every `_L` / `_R` shape, else itself. */
+/** Index of the opposite-side shape for every `_L` / `_R` shape (and mouthLeft/Right, jawLeft/Right), else itself. */
 const MIRROR_INDEX: number[] = BLENDSHAPE_NAMES.map((name, i) => {
-  const other = name.endsWith('_L') ? name.slice(0, -2) + '_R' : name.endsWith('_R') ? name.slice(0, -2) + '_L' : null;
+  const other = name.endsWith('_L')
+    ? name.slice(0, -2) + '_R'
+    : name.endsWith('_R')
+      ? name.slice(0, -2) + '_L'
+      : name.endsWith('Left')
+        ? name.slice(0, -4) + 'Right'
+        : name.endsWith('Right')
+          ? name.slice(0, -5) + 'Left'
+          : null;
   const j = other ? (BLENDSHAPE_NAMES as readonly string[]).indexOf(other) : -1;
   return j >= 0 ? j : i;
 });
@@ -124,6 +153,7 @@ export class FaceToFishMapper {
   private centered = false;
   private lastFrame: FaceFrame | null = null;
   private dtLive = 0;
+  private neutralCapture: { samples: Float32Array[]; live: number; waited: number; seconds: number; done: (rest: Float32Array | null) => void } | null = null;
 
   constructor(public config: MappingConfig = { ...DEFAULT_MAPPING }) {}
 
@@ -149,6 +179,44 @@ export class FaceToFishMapper {
   }
 
   /**
+   * Record the performer's resting face over `seconds` of live tracking (the median of each value,
+   * so a blink in between doesn't count) and use it as faceNeutral. `done` gets the values, or null
+   * if no tracking arrived within 5 seconds.
+   */
+  captureNeutral(seconds: number, done: (rest: Float32Array | null) => void): void {
+    this.neutralCapture = { samples: [], live: 0, waited: 0, seconds, done };
+  }
+
+  get capturingNeutral(): boolean {
+    return this.neutralCapture !== null;
+  }
+
+  private stepNeutralCapture(frame: FaceFrame, live: boolean, dt: number): void {
+    const cap = this.neutralCapture;
+    if (!cap) return;
+    cap.waited += dt;
+    if (live) {
+      cap.live += dt;
+      cap.samples.push(Float32Array.from(frame.weights));
+    }
+    if (cap.live < cap.seconds && cap.waited < cap.seconds + 5) return;
+    this.neutralCapture = null;
+    if (cap.samples.length < 5) {
+      cap.done(null);
+      return;
+    }
+    const rest = new Float32Array(BLENDSHAPE_COUNT);
+    const column = new Float32Array(cap.samples.length);
+    for (let i = 0; i < BLENDSHAPE_COUNT; i++) {
+      cap.samples.forEach((s, j) => (column[j] = s[i]));
+      column.sort();
+      rest[i] = column[column.length >> 1];
+    }
+    this.config.faceNeutral = rest;
+    cap.done(rest);
+  }
+
+  /**
    * Advance the pose by `dt` seconds toward the frame (if live) or the idle
    * behaviour. `time` is a monotonic clock in seconds for idle motion.
    */
@@ -156,6 +224,7 @@ export class FaceToFishMapper {
     const live = this.isLive;
     this.lastFrame = frame;
     this.dtLive = dt;
+    this.stepNeutralCapture(frame, live, dt);
     if (live) this.fromFrame(frame);
     else this.idle(time, dt);
     this.target.signal = live ? 1 : 0;
@@ -184,7 +253,11 @@ export class FaceToFishMapper {
     // procedural fish and morph-target avatars get the same boost.
     const w = this.scaled;
     const g = c.expressionGain;
-    for (let i = 0; i < BLENDSHAPE_COUNT; i++) w[i] = clamp(frame.weights[i] * g, 0, 1);
+    const rest = c.faceNeutral;
+    for (let i = 0; i < BLENDSHAPE_COUNT; i++) {
+      const raw = rest ? calibrate(frame.weights[i], rest[i]) : frame.weights[i];
+      w[i] = clamp(raw * g, 0, 1);
+    }
     // Morph-target avatars sculpt `_L` on their own left. Seen from the front
     // that is where the singer's left lands; in a mirror it is the other side.
     if (c.mirror) {
@@ -192,6 +265,8 @@ export class FaceToFishMapper {
     } else {
       this.targetWeights.set(w);
     }
+    const tw = this.targetWeights;
+    tw[BS.mouthFunnel] *= 1 - clamp(c.puckerPriority, 0, 1) * tw[BS.mouthPucker];
 
     // Which tracked side lands on screen-left? In a mirror the person's left
     // is on screen-left. Seen from the front (helmet), their right is.
@@ -256,6 +331,8 @@ export class FaceToFishMapper {
     t.headPitch = clamp(r.x - this.neutralRot.x, -lim, lim) * DEG * c.headGain * c.headSigns.pitch;
     t.headYaw = clamp(r.y - this.neutralRot.y, -lim, lim) * DEG * c.headGain * yawSign;
     t.headRoll = clamp(r.z - this.neutralRot.z, -lim, lim) * DEG * c.headGain * rollSign;
+    t.turn = clamp(r.y - this.neutralRot.y, -lim, lim) * DEG * yawSign;
+    t.nod = clamp(r.x - this.neutralRot.x, -lim, lim) * DEG * c.headSigns.pitch;
 
     // Position: up to ±20 cm of head travel becomes fish travel in the bowl.
     // ARKit's camera looks down -z, so moving toward the phone raises z;
@@ -299,6 +376,8 @@ export class FaceToFishMapper {
     t.browL = t.browR = 0.1 * Math.sin(time * 0.3);
     t.browInner = 0;
     t.headYaw = 10 * DEG * Math.sin(time * 0.5);
+    t.turn = t.headYaw;
+    t.nod = t.headPitch;
     t.headPitch = 4 * DEG * Math.sin(time * 0.8 + 2);
     t.headRoll = 4 * DEG * Math.sin(time * 0.35 + 1);
     t.headX = 0.05 * Math.sin(time * 0.4);

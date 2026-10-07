@@ -299,7 +299,53 @@ back to a built-in procedural version when there is no clip.
 
 ## Export
 
-File → Export → glTF 2.0:
+**With the scripts (recommended).** Save the .blend, then from the repo root:
+
+```bash
+B=/Applications/Blender.app/Contents/MacOS/Blender
+$B -b blender/<fish>.blend -P blender/export_rest.py -P blender/export_fish.py
+FACEFISH_NO_GLTF=1 $B -b blender/<fish>.blend -P blender/export_rest.py -P blender/export_fish.py -P blender/export_usd.py
+```
+
+- `export_rest.py`: rest pose (no animation, shape keys 0, bones at rest, fin-wave previews off) and
+  writes `public/models/fish.rig.json` (fin wave settings, bone names).
+- `export_fish.py`: `public/models/fish.glb` for the web app (shape keys rebuilt on the subdivided head).
+- `export_usd.py`: `public/models/fish.usdz` for the iOS app, Y up; see `docs/ios-handoff.md`.
+  Textures that aren't PNG or JPEG (the fins' PSDs) go into the USDZ as PNG copies.
+
+**Fin ripple.** Each fin has a `FinWave` UV map (U: 0 at the root -> 1 at the edge, V: across the fan)
+and a "FinWave preview" Geometry Nodes modifier: press play to see the ripple and tune Amplitude,
+Wavelength, Speed, Falloff and Cross on the modifier. The export writes those values to rig.json and
+the app and iOS run the same wave live; the preview itself is never baked into the export. Hiding a
+preview in the viewport doesn't remove its ripple from the export; set Amplitude 0 for that. The old
+Wave modifiers are Blender-only and are off.
+
+**Fin rig.** One small armature per fin, all parented to Head: `TailRig` (bones `Tail.1`-`Tail.3`)
+bends the skinned `Fin_Tail` about their X axes; `PecRig.L` (`Pec.L.0-2`) and `PecRig.R` (`Pec.R.0-2`)
+bend the side fins (`.0` is a still root anchor; the others flap about X and sweep about Z).
+`EyelidRig` holds only `Lid.L`/`Lid.R`. The app drives the fins with springs from head turns and nods.
+Keep them separate: RealityKit merges every mesh skinned to one skeleton into a single model, so
+fins sharing a rig load as one entity and the iOS app can't move them.
+
+**Mouth shapes.** `blender/make_mouth_shapes.py` builds the Face Cap mouth keys the head was
+missing (mouthUpperUp, LowerDown, Frown, Stretch, Dimple, Press, left and right; mouthRollUpper/Lower,
+mouthShrugUpper/Lower, mouthLeft/Right) as a first pass to sculpt on. It finds the lip edge rings
+around the mouth by itself and only moves vertices: no topology change, the teeth never move, and
+your own keys (jawOpen, mouthClose, mouthFunnel, mouthPucker, mouthSmile) are never touched. The
+sizes are at the top of the script; re-running overwrites only its own keys, so take a key out of
+`SHAPES` once you've sculpted it by hand. Left = the fish's own left (+X), like mouthSmileLeft.
+
+**Mirror the head.** `blender/mirror_head.py` makes the Head's basis exactly symmetric across X = 0
+(each vertex and its twin move to their average; middle-line vertices to X = 0) and gives every shape
+key the same correction, so expressions keep their movement. Re-run it whenever sculpting has
+drifted one side; then re-run `make_mouth_shapes.py` so its keys are exact mirror pairs again.
+
+**Fin bake.** All fins share the texture UV map `FinUV` without overlapping (the two side fins are
+stacked on purpose: mirror copies). `blender/bake_fins.py` bakes every fin into `fins_bake` in one
+bake, with your current bake settings; baking fins one at a time with "Clear Image" on keeps only
+the last one.
+
+**By hand**, File → Export → glTF 2.0:
 
 - Format: **glTF Binary (.glb)**
 - Include → Limit to: Selected Objects (if you have helpers you don't want)

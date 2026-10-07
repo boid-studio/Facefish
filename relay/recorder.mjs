@@ -131,10 +131,10 @@ export class TakeRecorder {
     }
   }
 
-  start() {
+  start(neutral) {
     if (this.take) return this.status();
     const name = `take-${stamp()}`;
-    this.take = { name, started: Date.now(), frames: [] };
+    this.take = { name, started: Date.now(), frames: [], neutral: validNeutral(neutral) };
     this.timer = setInterval(() => this.sample(), 1000 / SAMPLE_HZ);
     console.log(`[record] recording ${name}`);
     return this.status();
@@ -153,8 +153,9 @@ export class TakeRecorder {
     });
   }
 
-  stop() {
+  stop(neutral) {
     if (!this.take) return this.status();
+    if (validNeutral(neutral)) this.take.neutral = validNeutral(neutral);
     clearInterval(this.timer);
     this.timer = null;
     const take = this.take;
@@ -173,6 +174,8 @@ export class TakeRecorder {
       sampleRate: SAMPLE_HZ,
       seconds,
       names: BLENDSHAPE_NAMES,
+      // the performer's resting face from the app's Center face (raw values, same order as names), or null
+      neutral: take.neutral ?? null,
       units: { w: '0..1', hr: 'degrees (x, y, z)', ht: 'centimetres', el: 'Face Cap /ELR', er: 'Face Cap /ERR' },
       frames: take.frames,
     };
@@ -187,4 +190,9 @@ export class TakeRecorder {
       ? { type: 'record', state: 'recording', name: this.take.name, started: this.take.started }
       : { type: 'record', state: 'idle' };
   }
+}
+
+/** A resting face from the app: 52 numbers, or null. */
+function validNeutral(n) {
+  return Array.isArray(n) && n.length === BLENDSHAPE_NAMES.length && n.every((v) => typeof v === 'number') ? n.map(r3) : null;
 }

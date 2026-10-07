@@ -68,6 +68,15 @@ export class Hud {
     this.action.textContent = name ? `▶ ${name}` : '';
   }
 
+  /** A short message in the status line, shown for `ms` (or until replaced). */
+  note(text: string, ms = 2500): void {
+    this.action.textContent = text;
+    this.show(ms);
+    window.setTimeout(() => {
+      if (this.action.textContent === text) this.action.textContent = '';
+    }, ms);
+  }
+
   setSource(state: SourceState, detail?: string): void {
     switch (state) {
       case 'open':

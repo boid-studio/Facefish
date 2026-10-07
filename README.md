@@ -72,6 +72,7 @@ settings that are remembered on the device:
 | Head turn | How much the fish turns with the head. `1` follows exactly. |
 | Head move | How far the fish moves in the bowl when the head moves inside the helmet. About 5 cm of head travel per unit becomes a quarter of the fish's width. |
 | Auto-center head | Slowly relearns the resting pose while tracking, so a shifted helmet doesn't leave the fish leaning. **Center head** (or `c`) sets it instantly. |
+| Face calibration | Face Cap rarely reads 0 on a relaxed face (the mouth sits a little open and wide). Relax your face and press **Center face** (or `f`): for 1.5 s it records your resting face, which then counts as zero for every value. Kept on the device; takes record it too, for the Blender import. |
 | Zoom, Vertical offset | Frame the fish in the porthole. |
 | Caustics | Strength of the light ripples on the fish. `1.8` by default. |
 | Water tint | Blue haze between the camera and the fish. `0.35` by default, `0` is clear. |
@@ -102,6 +103,17 @@ for naming, orientation and export settings, and run
 `blender/add_facecap_shapekeys.py` inside Blender to create the 52 correctly named
 shape keys on your mesh. During development you can also point at any file with
 `?model=<url>`.
+
+## Recording, replaying and the native iOS app
+
+- **Key monitor** (`v` or the panel): every incoming Face Cap value, what the fish receives,
+  and which shapes the model doesn't have yet.
+- **Record a take** (`r` or the panel): the relay saves the Face Cap stream to `recordings/`.
+  `blender/import_take.py` turns a take into keyframes in Blender; `node relay/replay.mjs --to
+  <host>:8080 --loop` plays it back as live Face Cap data to the relay, an iPad, or the iOS app.
+- **Native iOS (RealityKit):** the spec for the iOS developer is
+  [docs/ios-handoff.md](docs/ios-handoff.md): model files, names and axes, the Face Cap mapping,
+  eyes, lids, the tail springs and the fin ripple, with every constant.
 
 ## Project layout
 

@@ -63,7 +63,7 @@ wss.on('connection', (ws, req) => {
     try {
       const msg = JSON.parse(text);
       if (msg && msg.type === 'record') {
-        handleRecord(msg.action);
+        handleRecord(msg.action, msg.neutral);
         return;
       }
     } catch {
@@ -82,10 +82,13 @@ httpServer.listen(WS_PORT);
 
 const recorder = new TakeRecorder();
 
-/** Start, stop or toggle a take; every app hears the new state. */
-function handleRecord(action) {
+/**
+ * Start, stop or toggle a take; every app hears the new state. `neutral` is the app's resting
+ * face (Center face), saved with the take so the Blender import can apply the same calibration.
+ */
+function handleRecord(action, neutral) {
   const wantStart = action === 'start' || (action !== 'stop' && !recorder.recording);
-  const status = wantStart ? recorder.start() : recorder.stop();
+  const status = wantStart ? recorder.start(neutral) : recorder.stop(neutral);
   const text = JSON.stringify(status);
   for (const ws of clients) if (ws.readyState === ws.OPEN) ws.send(text);
 }

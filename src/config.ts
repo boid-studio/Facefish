@@ -38,10 +38,24 @@ export interface AppConfig {
   expression: number;
   /** Smoothing of the tracked face and head (0 = raw, 1 = soft). */
   smoothing: number;
+  /** How much a pucker turns funnel down (0 = off, 1 = full), so the two never cross. */
+  puckerPriority: number;
   /** Overlay listing every incoming Face Cap value. */
   monitor: boolean;
+  /** Use the stored resting face (Center face) to zero every Face Cap value. */
+  faceCalibration: boolean;
   /** Degrees the eyelid bones turn at a full blink (negative turns the other way). */
   lidAngle: number;
+  /** How far closed the eyelids sit with no blink (0 = as modelled, 1 = shut). */
+  lidNeutral: number;
+  /** Tail reaction to head turns (0 = off, negative flips the side). */
+  finReaction: number;
+  /** Tail swim sway (0 = still). */
+  finSway: number;
+  /** Fin ripple strength (1 = as tuned in Blender, 0 = off). */
+  finWave: number;
+  /** Fin ripple speed (1 = as tuned in Blender). */
+  finWaveSpeed: number;
   /** Strength of the light caustics (1 = subtle). */
   caustics: number;
   /** Amount of bubbles from the fish's movement and mouth (0 = off). */
@@ -95,8 +109,15 @@ export const DEFAULT_CONFIG: AppConfig = {
   strength: 1.5,
   expression: 1.3,
   smoothing: 0.3,
+  puckerPriority: 1,
   monitor: false,
-  lidAngle: 100,
+  faceCalibration: true,
+  lidAngle: 77,
+  lidNeutral: 0,
+  finReaction: 1,
+  finSway: 1,
+  finWave: 1,
+  finWaveSpeed: 1,
   caustics: 1.8,
   bubbles: 1,
   tint: 0.35,
@@ -136,8 +157,15 @@ export function loadConfig(): AppConfig {
   cfg.strength = num('strength', cfg.strength);
   cfg.expression = num('expr', cfg.expression);
   cfg.smoothing = num('smooth', cfg.smoothing);
+  cfg.puckerPriority = num('pucker', cfg.puckerPriority);
   cfg.monitor = bool('monitor', cfg.monitor);
+  cfg.faceCalibration = bool('calib', cfg.faceCalibration);
   cfg.lidAngle = num('lid', cfg.lidAngle);
+  cfg.lidNeutral = num('lidrest', cfg.lidNeutral);
+  cfg.finReaction = num('fins', cfg.finReaction);
+  cfg.finSway = num('sway', cfg.finSway);
+  cfg.finWave = num('wave', cfg.finWave);
+  cfg.finWaveSpeed = num('wavespeed', cfg.finWaveSpeed);
   cfg.caustics = num('caustics', cfg.caustics);
   cfg.bubbles = num('bubbles', cfg.bubbles);
   cfg.tint = num('tint', cfg.tint);
@@ -158,6 +186,31 @@ function readSaved(): Partial<AppConfig> {
     return raw ? (JSON.parse(raw) as Partial<AppConfig>) : {};
   } catch {
     return {};
+  }
+}
+
+const FACE_KEY = 'facefish.faceNeutral';
+
+/**
+ * The performer's resting face from "Center face" (raw Face Cap values), kept apart from the
+ * settings so "Reset to defaults" doesn't throw it away. null when none has been captured.
+ */
+export function loadFaceNeutral(): Float32Array | null {
+  try {
+    const raw = localStorage.getItem(FACE_KEY);
+    const values = raw ? (JSON.parse(raw) as number[]) : null;
+    return Array.isArray(values) && values.length > 0 ? Float32Array.from(values) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveFaceNeutral(rest: Float32Array | null): void {
+  try {
+    if (rest) localStorage.setItem(FACE_KEY, JSON.stringify(Array.from(rest, (v) => Math.round(v * 1000) / 1000)));
+    else localStorage.removeItem(FACE_KEY);
+  } catch {
+    /* storage unavailable */
   }
 }
 

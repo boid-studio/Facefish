@@ -41,6 +41,14 @@ export interface FishPose {
   headY: number;
   /** Positive = toward the viewer. */
   headZ: number;
+  /**
+   * The singer's head turn in radians, relative to rest and mirrored like
+   * headYaw, but NOT scaled by the Head turn setting: fins and tail react to
+   * it even when the fish itself doesn't turn.
+   */
+  turn: number;
+  /** The singer's head nod in radians (positive = down), relative to rest, NOT scaled by Head turn. */
+  nod: number;
 
   /** 1 while tracking data is live, 0 while idling. */
   signal: number;
@@ -72,6 +80,8 @@ export function createFishPose(): FishPose {
     headX: 0,
     headY: 0,
     headZ: 0,
+    turn: 0,
+    nod: 0,
     signal: 0,
   };
 }

@@ -12,10 +12,12 @@ export interface PanelCallbacks {
   onChange(): void;
   /** "Center head": take the current head pose as the resting one. */
   onCenter(): void;
+  /** "Center face": record the performer's resting face. */
+  onCenterFace(): void;
 }
 
-type NumKey = 'strength' | 'expression' | 'smoothing' | 'lidAngle' | 'headGain' | 'moveGain' | 'zoom' | 'offsetY' | 'caustics' | 'bubbles' | 'tint';
-type BoolKey = 'mirror' | 'porthole' | 'gestures' | 'idleActions' | 'autoCenter' | 'helmet' | 'monitor';
+type NumKey = 'strength' | 'expression' | 'smoothing' | 'puckerPriority' | 'lidAngle' | 'lidNeutral' | 'finReaction' | 'finSway' | 'finWave' | 'finWaveSpeed' | 'headGain' | 'moveGain' | 'zoom' | 'offsetY' | 'caustics' | 'bubbles' | 'tint';
+type BoolKey = 'mirror' | 'porthole' | 'gestures' | 'idleActions' | 'autoCenter' | 'helmet' | 'monitor' | 'faceCalibration';
 
 interface RangeControl {
   kind: 'range';
@@ -38,10 +40,17 @@ const CONTROLS: Control[] = [
   { kind: 'range', key: 'strength', label: 'Action strength', hint: 'How big the laps, nods and wiggles are', min: 0.5, max: 3, step: 0.1 },
   { kind: 'range', key: 'expression', label: 'Expression', hint: 'Exaggerates the tracked face', min: 0.5, max: 2.5, step: 0.1 },
   { kind: 'range', key: 'smoothing', label: 'Smoothing', hint: 'Lower is snappier; 0 shows tracking raw', min: 0, max: 1, step: 0.05 },
+  { kind: 'range', key: 'puckerPriority', label: 'Pucker priority', hint: 'A pucker turns funnel down so a narrow kiss and an open O never cross; 0 is off', min: 0, max: 1, step: 0.05 },
   { kind: 'range', key: 'lidAngle', label: 'Lid close angle', hint: 'Degrees the eyelid bones turn on a full blink; negative turns the other way', min: -150, max: 150, step: 1 },
+  { kind: 'range', key: 'lidNeutral', label: 'Lid rest', hint: 'How far closed the eyelids sit with no blink; 0 is as modelled', min: 0, max: 0.8, step: 0.05 },
+  { kind: 'range', key: 'finReaction', label: 'Fin reaction', hint: 'Tail and side fins spring and wobble when the head turns or nods; negative flips them', min: -3, max: 3, step: 0.1 },
+  { kind: 'range', key: 'finSway', label: 'Swim motion', hint: 'Tail sway and side-fin sculling at rest', min: 0, max: 3, step: 0.1 },
+  { kind: 'range', key: 'finWave', label: 'Fin wave', hint: 'Ripple through the fins, as tuned in Blender at 1; 0 is off', min: 0, max: 3, step: 0.05 },
+  { kind: 'range', key: 'finWaveSpeed', label: 'Fin wave speed', hint: 'How fast the ripple travels; 1 is as tuned in Blender', min: 0, max: 3, step: 0.05 },
   { kind: 'range', key: 'headGain', label: 'Head turn', hint: 'Fish turns with the head; 1 follows exactly', min: 0, max: 2, step: 0.05 },
   { kind: 'range', key: 'moveGain', label: 'Head move', hint: 'Fish swims around the bowl as the head moves inside the helmet', min: 0, max: 3, step: 0.1 },
   { kind: 'toggle', key: 'autoCenter', label: 'Auto-center head', hint: 'Slowly relearns the resting pose; press c to center now' },
+  { kind: 'toggle', key: 'faceCalibration', label: 'Face calibration', hint: 'Your resting face (Center face, f) counts as zero for every value' },
   { kind: 'range', key: 'zoom', label: 'Zoom', hint: 'Frame the fish in the porthole', min: 0.5, max: 2, step: 0.05 },
   { kind: 'range', key: 'offsetY', label: 'Vertical offset', hint: 'Positive moves the fish up', min: -0.6, max: 0.6, step: 0.02 },
   { kind: 'range', key: 'caustics', label: 'Caustics', hint: 'Light ripples on the fish', min: 0, max: 3, step: 0.1 },
@@ -84,6 +93,7 @@ export class Panel {
     (document.getElementById('panel-close') as HTMLButtonElement).addEventListener('click', () => this.hide());
     (document.getElementById('panel-reset') as HTMLButtonElement).addEventListener('click', () => this.reset());
     (document.getElementById('panel-center') as HTMLButtonElement).addEventListener('click', () => this.cb.onCenter());
+    (document.getElementById('panel-center-face') as HTMLButtonElement).addEventListener('click', () => this.cb.onCenterFace());
     this.buildActions(actions);
     this.buildSettings();
     this.buildHudSelect();

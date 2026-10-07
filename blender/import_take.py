@@ -31,8 +31,11 @@ from mathutils import Euler, Matrix
 # ---- settings (match the app's control panel)
 TAKE = None          # path to a take .json; None = newest in recordings/
 GAIN = 1.3           # Expression
+CALIBRATE = True     # Face calibration: subtract the resting face stored with the take (Center face in the app)
+PUCKER_PRIORITY = 1.0  # Pucker priority: a pucker turns funnel down (funnel *= 1 - priority * pucker)
 MIRROR = False       # Mirror switch: True swaps left and right like a mirror
-LID_ANGLE = 100.0    # Lid close angle, degrees
+LID_ANGLE = 77.0     # Lid close angle, degrees (the lids are modelled ~23 degrees down; 77 more closes them)
+LID_REST = 0.0       # Lid rest: how far closed the lids sit with no blink (0 = as modelled)
 EYE_RANGE = 0.45     # radians an eye turns at a full look
 HEAD = True          # turn the Head object with the singer's head
 HEAD_GAIN = 1.0
@@ -74,14 +77,19 @@ def resample(col):
 
 
 w_raw = np.stack([resample(W[:, i]) for i in range(len(NAMES))], axis=1)
+NEUTRAL = doc.get("neutral")
+if CALIBRATE and NEUTRAL:
+    rest = np.array(NEUTRAL, dtype=float)
+    rest = np.where(rest >= 0.95, 0.0, rest)          # like the app: a stuck value isn't rescaled
+    w_raw = np.maximum(0.0, (w_raw - rest) / (1 - rest))
 w = np.clip(w_raw * GAIN, 0, 1)
+w[:, NAMES.index("mouthFunnel")] *= 1 - min(1.0, max(0.0, PUCKER_PRIORITY)) * w[:, NAMES.index("mouthPucker")]
 
 
 def swap(name):
-    if name.endswith("_L"):
-        return name[:-2] + "_R"
-    if name.endswith("_R"):
-        return name[:-2] + "_L"
+    for a, b in (("_L", "_R"), ("_R", "_L"), ("Left", "Right"), ("Right", "Left")):
+        if name.endswith(a):
+            return name[: -len(a)] + b
     return name
 
 
@@ -133,7 +141,8 @@ def add_curve(cb, path, index, values):
     fc.update()
 
 
-report = {"take": os.path.relpath(TAKE, ROOT), "seconds": round(float(T[-1]), 2), "frames": n_frames, "fps": fps}
+report = {"take": os.path.relpath(TAKE, ROOT), "seconds": round(float(T[-1]), 2), "frames": n_frames, "fps": fps,
+          "calibrated": bool(CALIBRATE and NEUTRAL)}
 
 # ---- shape keys
 head = bpy.data.objects["Head"]
@@ -156,9 +165,10 @@ inL, inR = screen_pair("eyeLookIn_L", "eyeLookIn_R")
 outL, outR = screen_pair("eyeLookOut_L", "eyeLookOut_R")
 upL, upR = screen_pair("eyeLookUp_L", "eyeLookUp_R")
 downL, downR = screen_pair("eyeLookDown_L", "eyeLookDown_R")
+# inL/outL/... are the eye on the LEFT OF THE SCREEN; facing the viewer, that is the fish's right eye
 gaze = {
-    "Eye.L": ((inL - outL) * EYE_RANGE, (downL - upL) * EYE_RANGE),
-    "Eye.R": ((outR - inR) * EYE_RANGE, (downR - upR) * EYE_RANGE),
+    "Eye.R": ((inL - outL) * EYE_RANGE, (downL - upL) * EYE_RANGE),
+    "Eye.L": ((outR - inR) * EYE_RANGE, (downR - upR) * EYE_RANGE),
 }
 for name, (yaw, pitch) in gaze.items():
     eye = bpy.data.objects.get(name)
@@ -191,7 +201,8 @@ if rig is not None:
         cb = cb or new_action(rig, "OBJECT", "lids")
         amount = np.clip(model(f"eyeBlink_{side}") + 0.35 * model(f"eyeSquint_{side}") - 0.25 * model(f"eyeWide_{side}"), -0.3, 1)
         pb.rotation_mode = "XYZ"
-        add_curve(cb, f'pose.bones["{bone}"].rotation_euler', 0, np.radians(LID_ANGLE * amount))
+        closed = np.where(amount >= 0, LID_REST + (1 - LID_REST) * amount, LID_REST + amount * (LID_REST + 0.3) / 0.3)
+        add_curve(cb, f'pose.bones["{bone}"].rotation_euler', 0, np.radians(LID_ANGLE * closed))
         report.setdefault("lids", []).append(bone)
 
 # ---- head turning, relative to the start of the take

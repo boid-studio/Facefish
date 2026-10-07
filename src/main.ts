@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { ActionPlayer } from './actions/ActionPlayer';
 import { GestureTriggers, installKeyboardTriggers } from './actions/triggers';
-import { loadConfig, saveConfig } from './config';
+import { loadConfig, loadFaceNeutral, saveConfig, saveFaceNeutral } from './config';
 import { FaceCapDecoder } from './facecap/decoder';
 import { WebSocketSource, type FaceSource } from './facecap/source';
 import type { Avatar } from './fish/Avatar';
@@ -46,8 +46,10 @@ async function loadAvatar(): Promise<Avatar> {
     console.info(`[facefish] loaded model ${url}\n  ${fish.report.join('\n  ')}`);
     return fish;
   } catch (err) {
-    if (param) console.warn(`[facefish] could not load ${url}, using procedural fish`, err);
-    else console.info('[facefish] no models/fish.glb, using procedural fish');
+    // A missing file is normal (no Blender model yet); anything else is a broken export worth seeing.
+    const missing = await fetch(url, { method: 'HEAD' }).then((r) => !r.ok).catch(() => true);
+    if (missing && !param) console.info('[facefish] no models/fish.glb, using procedural fish');
+    else console.error(`[facefish] could not load ${url}, using procedural fish:`, err);
     return new Fish();
   }
 }
@@ -79,7 +81,38 @@ async function main(): Promise<void> {
     autoCenter: config.autoCenter ? DEFAULT_MAPPING.autoCenter : 0,
     expressionGain: config.expression,
     smoothing: config.smoothing,
+    puckerPriority: config.puckerPriority,
   });
+  let faceNeutral = loadFaceNeutral();
+  const faceStatus = document.getElementById('panel-face-status') as HTMLParagraphElement;
+  const showFaceStatus = (): void => {
+    faceStatus.textContent = !faceNeutral
+      ? 'Relax your face and press Center face: your resting face then counts as zero for every Face Cap value.'
+      : config.faceCalibration
+        ? 'Face centred: your resting face counts as zero. Press again to redo it.'
+        : 'A resting face is stored but Face calibration is off.';
+  };
+  function centerFace(): void {
+    if (mapper.capturingNeutral) return;
+    hud.note('Center face: relax your face…', 4000);
+    faceStatus.textContent = 'Hold a relaxed face…';
+    mapper.captureNeutral(1.5, (rest) => {
+      if (!rest) {
+        hud.note('Center face: no tracking, nothing changed');
+        showFaceStatus();
+        applyConfig();
+        return;
+      }
+      faceNeutral = rest;
+      saveFaceNeutral(rest);
+      config.faceCalibration = true;
+      applyConfig();
+      panel.refresh();
+      hud.note('Face centred');
+    });
+  }
+  // Development builds only: inspect the fish and the mapping from the browser console.
+  if (import.meta.env.DEV) (window as unknown as { facefish: unknown }).facefish = { fish, mapper };
   const hud = new Hud(defaultRelayUrl());
   hud.setMode(config.hud);
 
@@ -106,7 +139,15 @@ async function main(): Promise<void> {
     mapper.config.autoCenter = config.autoCenter ? DEFAULT_MAPPING.autoCenter : 0;
     mapper.config.expressionGain = config.expression;
     mapper.config.smoothing = config.smoothing;
+    mapper.config.puckerPriority = config.puckerPriority;
+    mapper.config.faceNeutral = config.faceCalibration ? faceNeutral : null;
+    showFaceStatus();
     if (fish.lidAngle !== undefined) fish.lidAngle = config.lidAngle;
+    if (fish.lidNeutral !== undefined) fish.lidNeutral = config.lidNeutral;
+    if (fish.finReaction !== undefined) fish.finReaction = config.finReaction;
+    if (fish.finSway !== undefined) fish.finSway = config.finSway;
+    if (fish.finWave !== undefined) fish.finWave = config.finWave;
+    if (fish.finWaveSpeed !== undefined) fish.finWaveSpeed = config.finWaveSpeed;
     actions.strength = config.strength;
     stage.setFraming(config.zoom, config.offsetY);
     stage.setCaustics(config.caustics);
@@ -123,6 +164,7 @@ async function main(): Promise<void> {
     onAction: (name) => actions.trigger(name),
     onChange: applyConfig,
     onCenter: () => mapper.centerHead(),
+    onCenterFace: () => centerFace(),
   });
   applyConfig();
   actions.onChange = (name) => {
@@ -136,6 +178,7 @@ async function main(): Promise<void> {
       if (key === 'h') hud.toggle();
       if (key === 'p') panel.toggle();
       if (key === 'c') mapper.centerHead();
+      if (key === 'f') centerFace();
       if (key === 'r') recording.toggle();
       if (key === 'v') {
         config.monitor = !config.monitor;
@@ -147,7 +190,10 @@ async function main(): Promise<void> {
   );
 
   let source: FaceSource | null = null;
-  const recording = new RecordingUi((msg) => source?.send?.(msg) ?? false);
+  // Takes carry the resting face in use, so blender/import_take.py can apply the same calibration.
+  const recording = new RecordingUi(
+    (msg) => source?.send?.({ ...msg, neutral: mapper.config.faceNeutral ? Array.from(mapper.config.faceNeutral) : null }) ?? false,
+  );
   let packetsThisSecond = 0;
   let packetRate = 0;
   let rateTimer = 0;

@@ -1,0 +1,101 @@
+{
+  "format": "facefish-rig/1",
+  "model": "fish.glb",
+  "source": "fish_david_AppliedMirror_keys7.blend",
+  "axes": "axis: glTF mesh space (Y up, the fish faces +Z, its left is +X), for fish.glb. axisUsd: Blender mesh space (Z up, the fish faces -Y, its left is +X), which fish.usdz keeps under a single Y-up rotation on /root",
+  "finWave": {
+    "uvSet": 1,
+    "formula": "offset = axis * amplitude * U^falloff * sin(2*pi*(U/wavelength - speed*t + V*cross))",
+    "fins": {
+      "Fin_Dorsal": {
+        "amplitude": 0.14979,
+        "wavelength": 4.04,
+        "speed": 0.8,
+        "falloff": 3.08,
+        "cross": 2.11,
+        "axis": [
+          0.00032,
+          0.99692,
+          0.07837
+        ],
+        "axisUsd": [
+          0.00032,
+          -0.07837,
+          0.99692
+        ]
+      },
+      "Fin_Pectoral.L": {
+        "amplitude": 0.08658,
+        "wavelength": 4.1,
+        "speed": 0.8,
+        "falloff": 3.12,
+        "cross": 2.11,
+        "axis": [
+          -0.57689,
+          -0.23728,
+          -0.7816
+        ],
+        "axisUsd": [
+          -0.57689,
+          0.7816,
+          -0.23728
+        ]
+      },
+      "Fin_Pectoral.R": {
+        "amplitude": 0.12658,
+        "wavelength": 4.04,
+        "speed": 0.8,
+        "falloff": 3.08,
+        "cross": 2.11,
+        "axis": [
+          -0.57689,
+          -0.23728,
+          -0.7816
+        ],
+        "axisUsd": [
+          -0.57689,
+          0.7816,
+          -0.23728
+        ]
+      },
+      "Fin_Tail": {
+        "amplitude": 0.151,
+        "wavelength": 4.04,
+        "speed": 0.8,
+        "falloff": 3.08,
+        "cross": 2.11,
+        "axis": [
+          1.0,
+          0.0,
+          -0.0
+        ],
+        "axisUsd": [
+          1.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  },
+  "bones": {
+    "EyelidRig": [
+      "Lid.L",
+      "Lid.R"
+    ],
+    "PecRig.L": [
+      "Pec.L.0",
+      "Pec.L.1",
+      "Pec.L.2"
+    ],
+    "PecRig.R": [
+      "Pec.R.0",
+      "Pec.R.1",
+      "Pec.R.2"
+    ],
+    "TailRig": [
+      "Tail.1",
+      "Tail.2",
+      "Tail.3"
+    ]
+  }
+}

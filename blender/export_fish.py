@@ -123,20 +123,24 @@ for obj in list(bpy.data.objects):
 
 has_clips = any(o.animation_data and o.animation_data.nla_tracks for o in bpy.data.objects)
 
-bpy.ops.export_scene.gltf(
-    filepath=out,
-    export_format="GLB",
-    export_apply=True,
-    export_morph=True,
-    export_morph_normal=False,
-    export_animations=has_clips,
-    export_animation_mode="NLA_TRACKS" if has_clips else "ACTIONS",
-    export_yup=True,
-    export_draco_mesh_compression_enable=False,
-    # WebP keeps a 2k texture set around 1-2 MB; the iPad and three.js both read it.
-    export_image_format="WEBP",
-    export_image_quality=90,
-    use_visible=True,
-)
-
-print(f"[export] {out} ({os.path.getsize(out) // 1024} kB, clips: {'yes' if has_clips else 'no'})")
+# FACEFISH_NO_GLTF=1: only prepare the scene (shape keys baked, materials stubbed) for another
+# exporter that runs next in the same Blender, e.g. blender/export_usd.py for the iOS app.
+if os.environ.get("FACEFISH_NO_GLTF"):
+    print("[export] scene prepared; glTF export skipped (FACEFISH_NO_GLTF)")
+else:
+    bpy.ops.export_scene.gltf(
+        filepath=out,
+        export_format="GLB",
+        export_apply=True,
+        export_morph=True,
+        export_morph_normal=False,
+        export_animations=has_clips,
+        export_animation_mode="NLA_TRACKS" if has_clips else "ACTIONS",
+        export_yup=True,
+        export_draco_mesh_compression_enable=False,
+        # WebP keeps a 2k texture set around 1-2 MB; the iPad and three.js both read it.
+        export_image_format="WEBP",
+        export_image_quality=90,
+        use_visible=True,
+    )
+    print(f"[export] {out} ({os.path.getsize(out) // 1024} kB, clips: {'yes' if has_clips else 'no'})")

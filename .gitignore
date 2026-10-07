@@ -5,7 +5,8 @@ dist/
 ios/App/Pods/
 ios/App/App.xcworkspace/xcuserdata/
 ios/App/App.xcodeproj/xcuserdata/
-ios/App/public/
+ios/App/App/public/
+ios/App/App/capacitor.config.json
 __pycache__/
 *.blend1
 *.psd
