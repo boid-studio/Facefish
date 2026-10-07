@@ -66,7 +66,7 @@ final class AvatarController {
     private var mouthIsOpen = false
     private var mouthBubbleBursts: [MouthBubbleBurst] = []
     /// Loud lows with the mouth at least this open stream big bubbles.
-    static let audioBigBubbleLowThreshold: Float = 0.6
+    static let audioBigBubbleLowThreshold: Float = 0.3
     static let audioBigBubbleMouthThreshold: Float = 0.3
     /// Loud highs stream small bubbles.
     static let audioSmallBubbleHighThreshold: Float = 0.45
@@ -267,7 +267,10 @@ final class AvatarController {
         let steps = max(1, Int((deltaTime / (1.0 / 120)).rounded(.up)))
         let stepTime = deltaTime / Float(steps)
         for _ in 0..<steps {
-            followVelocity += (stiffness * (target - followPosition) - 2 * ratio * sqrt(stiffness) * followVelocity) * stepTime
+            let springForce = stiffness * (target - followPosition)
+            let damping = 2 * ratio * sqrt(stiffness) * followVelocity
+            let acceleration = springForce - damping
+            followVelocity += acceleration * stepTime
             followPosition += followVelocity * stepTime
         }
     }

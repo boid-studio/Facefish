@@ -33,6 +33,11 @@ final class AudioLevelMonitor {
     private var observers: [any NSObjectProtocol] = []
     private var tapInstalled = false
 
+    var sensitivityDecibels: Float {
+        get { analyzer.sensitivityDecibels }
+        set { analyzer.sensitivityDecibels = newValue }
+    }
+
     func start() {
         guard startTask == nil, status != .running else { return }
         status = .requestingPermission
@@ -150,6 +155,8 @@ nonisolated final class AudioSpectrumAnalyzer: @unchecked Sendable {
     static let highBand: ClosedRange<Double> = 2_000...10_000
     static let floorDecibels: Float = -60
     static let ceilingDecibels: Float = -10
+    static let defaultSensitivityDecibels: Float = 12
+    static let sensitivityRange: ClosedRange<Float> = 0...36
     private static let attackTime: Float = 0.03
     private static let releaseTime: Float = 0.25
     private static let logInterval: Float = 0.25
@@ -163,6 +170,7 @@ nonisolated final class AudioSpectrumAnalyzer: @unchecked Sendable {
     private static let powerScale = 2 / (Float(fftSize) * vDSP.sumOfSquares(window))
 
     private let published = Mutex(AudioLevels.silent)
+    private let sensitivity = Mutex(defaultSensitivityDecibels)
     private let logger = Logger(subsystem: "ARFace", category: "Audio")
     private let zeros = [Float](repeating: 0, count: fftSize)
     private let dft = try? vDSP.DiscreteFourierTransform(
@@ -178,6 +186,11 @@ nonisolated final class AudioSpectrumAnalyzer: @unchecked Sendable {
     private var timeSinceLog: Float = 0
 
     var levels: AudioLevels { published.withLock { $0 } }
+
+    var sensitivityDecibels: Float {
+        get { sensitivity.withLock { $0 } }
+        set { sensitivity.withLock { $0 = min(max(newValue, Self.sensitivityRange.lowerBound), Self.sensitivityRange.upperBound) } }
+    }
 
     func reset(sampleRate: Double?) {
         if let sampleRate { self.sampleRate = sampleRate }
@@ -198,22 +211,36 @@ nonisolated final class AudioSpectrumAnalyzer: @unchecked Sendable {
             history.append(contentsOf: samples)
         }
 
-        let spectrum = dft.transform(inputReal: vDSP.multiply(history, Self.window), inputImaginary: zeros)
+        let windowedSamples: [Float] = vDSP.multiply(history, Self.window)
+        var spectrumReal = [Float](repeating: 0, count: size)
+        var spectrumImaginary = [Float](repeating: 0, count: size)
+        dft.transform(
+            inputReal: windowedSamples,
+            inputImaginary: zeros,
+            outputReal: &spectrumReal,
+            outputImaginary: &spectrumImaginary
+        )
         let binWidth = sampleRate / Double(size)
+        let sensitivityDecibels = self.sensitivityDecibels
         func bandLevel(_ band: ClosedRange<Double>) -> Float {
             let lower = max(1, Int((band.lowerBound / binWidth).rounded(.up)))
             let upper = min(size / 2 - 1, Int((band.upperBound / binWidth).rounded(.down)))
             guard lower <= upper else { return 0 }
             var power: Float = 0
             for bin in lower...upper {
-                power += spectrum.real[bin] * spectrum.real[bin] + spectrum.imaginary[bin] * spectrum.imaginary[bin]
+                let real = spectrumReal[bin]
+                let imaginary = spectrumImaginary[bin]
+                power += real * real + imaginary * imaginary
             }
-            return Self.normalized(decibels: 10 * log10(max(power * Self.powerScale, 1e-12)))
+            return Self.normalized(
+                decibels: 10 * log10(max(power * Self.powerScale, 1e-12)),
+                sensitivityDecibels: sensitivityDecibels
+            )
         }
 
         let rms = vDSP.rootMeanSquare(samples)
         let measured = AudioLevels(
-            overall: Self.normalized(decibels: 20 * log10(max(rms, 1e-6))),
+            overall: Self.normalized(decibels: 20 * log10(max(rms, 1e-6)), sensitivityDecibels: sensitivityDecibels),
             low: bandLevel(Self.lowBand),
             mid: bandLevel(Self.midBand),
             high: bandLevel(Self.highBand)
@@ -240,7 +267,8 @@ nonisolated final class AudioSpectrumAnalyzer: @unchecked Sendable {
         }
     }
 
-    private static func normalized(decibels: Float) -> Float {
-        min(max((decibels - floorDecibels) / (ceilingDecibels - floorDecibels), 0), 1)
+    private static func normalized(decibels: Float, sensitivityDecibels: Float) -> Float {
+        let boostedDecibels = decibels + sensitivityDecibels
+        return min(max((boostedDecibels - floorDecibels) / (ceilingDecibels - floorDecibels), 0), 1)
     }
 }

@@ -8,6 +8,17 @@ struct AudioDebugSection: View {
             let levels = monitor.snapshot()
             VStack(alignment: .leading, spacing: 6) {
                 LabeledContent("Microphone", value: statusText)
+                LabeledContent("Sensitivity") {
+                    HStack(spacing: 8) {
+                        Slider(
+                            value: sensitivityBinding,
+                            in: AudioSpectrumAnalyzer.sensitivityRange,
+                            step: 1
+                        )
+                        Text("+\(Int(monitor.sensitivityDecibels)) dB")
+                            .frame(width: 58, alignment: .trailing)
+                    }
+                }
                 meter("Overall", value: levels.overall)
                 meter("Low (20–250 Hz)", value: levels.low, threshold: AvatarController.audioBigBubbleLowThreshold)
                 meter("Mid (250–2k Hz)", value: levels.mid)
@@ -15,6 +26,13 @@ struct AudioDebugSection: View {
             }
             .monospacedDigit()
         }
+    }
+
+    private var sensitivityBinding: Binding<Float> {
+        Binding(
+            get: { monitor.sensitivityDecibels },
+            set: { monitor.sensitivityDecibels = $0 }
+        )
     }
 
     private var statusText: String {
