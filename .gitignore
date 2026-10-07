@@ -17,4 +17,5 @@ ios/build
 ios/ARFace/Resources/*.usdz
 ARFace/Resources/fish_test.usdz
 build
-Packages/RealityKitContent
+Packages/RealityKitContent/.build/
+Packages/RealityKitContent/.swiftpm/

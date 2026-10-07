@@ -20,6 +20,12 @@ TrueDepth camera.
 2. Select the `ARFace` scheme and a compatible iPhone or iPad.
 3. Build and run the app, then allow camera access when prompted.
 
+The project uses the local Swift package at `Packages/RealityKitContent` for its
+underwater scene. Keep this package with the project; no download is required.
+If Xcode reports **Missing package product 'RealityKitContent'**, verify that
+`Packages/RealityKitContent/Package.swift` exists, then use **File > Packages >
+Resolve Package Versions** and rebuild.
+
 ## Using the app
 
 The live face-tracked avatar is mirrored by default. Use **Mirror** to switch
