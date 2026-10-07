@@ -5,6 +5,10 @@ import UIKit
 
 /// A small pooled field of lit sphere entities used instead of billboard particles.
 final class BubbleSphereSystem {
+    static let risingAcceleration: SIMD3<Float> = [0, 0.21, 0]
+    static let risingDamping: Float = 1.8
+    static let risingTurbulence: Float = 0.035
+
     private struct Bubble {
         let entity: ModelEntity
         var velocity: SIMD3<Float> = .zero
@@ -46,7 +50,8 @@ final class BubbleSphereSystem {
         spawnRadius: SIMD3<Float>,
         directionalSpread: Float = 0.12,
         turbulence: Float = 0,
-        shrinksAtEndOfLife: Bool = true
+        shrinksAtEndOfLife: Bool = true,
+        screenSpaceGlass: Bool = false
     ) {
         self.parent = parent
         self.radius = radius
@@ -66,22 +71,42 @@ final class BubbleSphereSystem {
         self.bubbles.reserveCapacity(capacity)
 
         for _ in 0..<capacity {
-            let entity = ModelEntity(mesh: mesh, materials: [material])
+            let entity = screenSpaceGlass ? ModelEntity() : ModelEntity(mesh: mesh, materials: [material])
             entity.isEnabled = false
             parent.addChild(entity)
             bubbles.append(Bubble(entity: entity))
         }
     }
 
+    var glassSpheres: [SIMD4<Float>] {
+        guard parent.isEnabledInHierarchy else { return [] }
+        return bubbles.compactMap { bubble in
+            guard bubble.entity.isEnabled else { return nil }
+            let transform = bubble.entity.transformMatrix(relativeTo: nil)
+            let axis = transform.columns.0
+            let radius = simd_length(SIMD3(axis.x, axis.y, axis.z))
+            guard radius > 0 else { return nil }
+            let position = bubble.entity.position(relativeTo: nil)
+            return SIMD4(position, radius)
+        }
+    }
+
     private static func bubbleMaterial(color: UIColor) -> any Material {
+        let logger = Logger(subsystem: "ARFace", category: "Bubbles")
         let tint = color.withAlphaComponent(1)
-        if let library = MTLCreateSystemDefaultDevice()?.makeDefaultLibrary(),
-           var material = try? CustomMaterial(
-               from: UnlitMaterial(color: tint),
-               surfaceShader: .init(named: "bubbleSurface", in: library)
-           ) {
+        do {
+            guard let library = MTLCreateSystemDefaultDevice()?.makeDefaultLibrary() else {
+                throw CocoaError(.featureUnsupported)
+            }
+            var material = try CustomMaterial(
+                surfaceShader: .init(named: "bubbleSurface", in: library),
+                lightingModel: .unlit
+            )
+            material.baseColor = .init(PhysicallyBasedMaterial.BaseColor(tint: tint))
             material.blending = .transparent(opacity: .init(floatLiteral: 1))
             return material
+        } catch {
+            logger.error("Bubble shader unavailable; using non-refractive fallback: \(error.localizedDescription)")
         }
         var fallback = PhysicallyBasedMaterial()
         fallback.baseColor = .init(tint: tint)
@@ -208,7 +233,9 @@ final class UnderwaterSceneController {
     private var spotlightsEnabled = true
     private var shadowsEnabled = true
 
-    init(scene: Entity) {
+    var glassSpheres: [SIMD4<Float>] { ambientBubbles?.glassSpheres ?? [] }
+
+    init(scene: Entity, screenSpaceGlass: Bool = false) {
         if library == nil {
             logger.error("Metal library unavailable; caustic and fin-ripple shaders are disabled.")
         }
@@ -224,9 +251,11 @@ final class UnderwaterSceneController {
                 lifeVariation: 3,
                 speed: 0.02,
                 speedVariation: 0.008,
-                acceleration: [0, 0.004, 0],
-                damping: 0.05,
-                spawnRadius: [0.45, 0.5, 0.2]
+                acceleration: BubbleSphereSystem.risingAcceleration,
+                damping: BubbleSphereSystem.risingDamping,
+                spawnRadius: [0.45, 0.5, 0.2],
+                turbulence: BubbleSphereSystem.risingTurbulence,
+                screenSpaceGlass: screenSpaceGlass
             )
             ambientBubbles?.emit(count: 10)
         }
