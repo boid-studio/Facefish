@@ -200,7 +200,14 @@ final class AvatarController {
         if options.mouthBubblesEnabled {
             mouthBubbleSpheres?.update(deltaTime: deltaTime)
         }
-        finRig.update(turn: turn, nod: nod, mouthOpen: mouthOpen, deltaTime: deltaTime)
+        // Once fully at rest, nil hands the fins over to their idle swim.
+        let finAngles = presence > 0 ? lastFinAngles : nil
+        finRig.update(
+            turn: finAngles.map { $0.turn * presence },
+            nod: finAngles.map { $0.nod * presence },
+            mouthOpen: mouthOpen,
+            deltaTime: deltaTime
+        )
 
         updateHeadFollow(enabled: options.headFollowEnabled, deltaTime: Float(min(deltaTime, 0.1)))
 
@@ -233,14 +240,6 @@ final class AvatarController {
             followVelocity += (stiffness * (target - followPosition) - 2 * ratio * sqrt(stiffness) * followVelocity) * stepTime
             followPosition += followVelocity * stepTime
         }
-        // Once fully at rest, nil hands the fins over to their idle swim.
-        let finAngles = presence > 0 ? lastFinAngles : nil
-        finRig.update(
-            turn: finAngles.map { $0.turn * presence },
-            nod: finAngles.map { $0.nod * presence },
-            mouthOpen: mouthOpen,
-            deltaTime: deltaTime
-        )
     }
 
     /// Ease-in-out with zero velocity and acceleration at both ends.
