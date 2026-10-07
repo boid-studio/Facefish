@@ -6,6 +6,7 @@ import UIKit
 
 /// Drives a loaded avatar's blend shapes and head rotation from `FaceState`.
 final class AvatarController {
+    let sceneRoot = Entity()
     let root = Entity()
     /// Between the head pose (`root`) and the model: carries the swim motion's tilt and rock.
     private let body = Entity()
@@ -55,13 +56,15 @@ final class AvatarController {
     private(set) var boundLocations: Set<ARFaceAnchor.BlendShapeLocation> = []
     private(set) var appliedJawOpen: Float = 0
 
-    /// Approximate mouth position in the "Head" mesh's local space (near the jawOpen blend shape's hinge point).
-    private static let mouthLocalPosition: SIMD3<Float> = [0, -0.65, 0.98]
+    /// The current asset keeps Blender axes in Head: -Y forward, +Z up.
+    private static let mouthLocalPosition: SIMD3<Float> = [0, -1.16, -0.43]
     private static let mouthOpenThreshold: Float = 0.35
     private static let mouthCloseThreshold: Float = 0.15
-    private var mouthBubbles: Entity?
+    private var mouthEmitter: Entity?
+    private let mouthBubbles = Entity()
     private var mouthBubbleSpheres: BubbleSphereSystem?
     private var mouthIsOpen = false
+    private var mouthBubbleBursts: [MouthBubbleBurst] = []
     private var blendShapesEnabled = true
     private var causticsEnabled = true
 
@@ -71,6 +74,8 @@ final class AvatarController {
         lidRig = LidRig(model: model)
         fishSize = targetSize
         fit(model, targetSize: targetSize)
+        sceneRoot.addChild(root)
+        sceneRoot.addChild(mouthBubbles)
         root.addChild(body)
         body.addChild(model)
 
@@ -86,20 +91,25 @@ final class AvatarController {
             let bubbles = Entity()
             bubbles.position = Self.mouthLocalPosition
             head.addChild(bubbles)
-            mouthBubbles = bubbles
+            mouthEmitter = bubbles
             mouthBubbleSpheres = BubbleSphereSystem(
-                parent: bubbles,
-                capacity: 24,
-                radius: 0.006,
+                parent: mouthBubbles,
+                capacity: 64,
+                radius: 0.01,
                 color: UIColor(red: 0.85, green: 0.97, blue: 1, alpha: 0.85),
-                lifeSpan: 0.8,
-                lifeVariation: 0.3,
-                speed: 0.1,
-                speedVariation: 0.05,
-                acceleration: [0, 0.05, 0],
-                damping: 0.3,
-                spawnRadius: [0.015, 0.015, 0.015]
+                lifeSpan: 2.8,
+                lifeVariation: 0.4,
+                speed: 0.32,
+                speedVariation: 0.07,
+                acceleration: [0, 0.21, 0],
+                damping: 1.8,
+                spawnRadius: [0.008, 0.006, 0.006],
+                directionalSpread: 0.55,
+                turbulence: 0.035,
+                shrinksAtEndOfLife: false
             )
+        } else {
+            logger.error("Fish model is missing Head; mouth bubble emission is disabled.")
         }
     }
 
@@ -110,7 +120,7 @@ final class AvatarController {
         }
 
         setBlendShapesEnabled(options.blendShapesEnabled)
-        mouthBubbles?.isEnabled = options.mouthBubblesEnabled
+        mouthBubbles.isEnabled = options.mouthBubblesEnabled
         let causticsChanged = options.causticsEnabled != causticsEnabled
         causticsEnabled = options.causticsEnabled
         finRig.setEnabled(options.finAnimationEnabled, refreshMaterials: causticsChanged)
@@ -182,10 +192,6 @@ final class AvatarController {
         let mouthFunnel = (smoothedBlendShapes[.mouthFunnel] ?? 0) * presence
         let mouthClose = (smoothedBlendShapes[.mouthClose] ?? 0) * presence
         let mouthOpen = max(appliedJawOpen, 0.5 * mouthFunnel) * (1 - 0.85 * mouthClose)
-        if options.mouthBubblesEnabled {
-            updateMouthBubbles(jawOpen: appliedJawOpen)
-        }
-
         if blendShapesEnabled {
             for target in targets {
                 guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
@@ -197,9 +203,6 @@ final class AvatarController {
             }
         }
 
-        if options.mouthBubblesEnabled {
-            mouthBubbleSpheres?.update(deltaTime: deltaTime)
-        }
         // Once fully at rest, nil hands the fins over to their idle swim.
         let finAngles = presence > 0 ? lastFinAngles : nil
         finRig.update(
@@ -219,6 +222,14 @@ final class AvatarController {
         let swim = swimMotion.update(deltaTime: Float(min(deltaTime, 0.1)), mouthOpen: mouthOpen, size: fishSize)
         root.position = followPosition + swim.offset   // in the scene's frame, so "up" stays up when the head tilts
         body.orientation = swim.rotation     // relative to the head pose
+
+        if options.mouthBubblesEnabled {
+            updateMouthBubbles(jawOpen: appliedJawOpen, deltaTime: Float(min(deltaTime, 0.1)))
+            mouthBubbleSpheres?.update(deltaTime: deltaTime)
+        } else {
+            mouthIsOpen = false
+            mouthBubbleBursts.removeAll(keepingCapacity: true)
+        }
     }
 
     /// The fish swims a little toward where it faces: look up and it rises, look aside and it swims
@@ -265,6 +276,7 @@ final class AvatarController {
         smoothedRotation = nil
         smoothedBlendShapes.removeAll(keepingCapacity: true)
         mouthIsOpen = false
+        mouthBubbleBursts.removeAll(keepingCapacity: true)
         finNeutralRotation = nil
     }
 
@@ -288,14 +300,30 @@ final class AvatarController {
         )
     }
 
-    /// Fires a small burst of bubbles the moment the mouth opens, with hysteresis to avoid repeat triggers while held open.
-    private func updateMouthBubbles(jawOpen: Float) {
+    /// Fires once per mouth opening; bubbles leave the moving fish and rise in scene space.
+    private func updateMouthBubbles(jawOpen: Float, deltaTime: Float) {
         if jawOpen > Self.mouthOpenThreshold, !mouthIsOpen {
             mouthIsOpen = true
-            mouthBubbleSpheres?.emit(count: 10 + Int.random(in: 0...4))
+            mouthBubbleBursts.append(MouthBubbleBurst())
         } else if jawOpen < Self.mouthCloseThreshold {
             mouthIsOpen = false
         }
+
+        guard let mouthEmitter else { return }
+        let origin = mouthEmitter.convert(position: .zero, to: mouthBubbles)
+        let direction = simd_normalize(mouthEmitter.convert(direction: [0, -1, 0], to: mouthBubbles))
+        for index in mouthBubbleBursts.indices {
+            for emission in mouthBubbleBursts[index].advance(deltaTime: deltaTime) {
+                mouthBubbleSpheres?.emit(
+                    count: 1,
+                    origin: origin,
+                    direction: direction,
+                    radiusScale: emission.radiusScale,
+                    speedScale: emission.speedScale
+                )
+            }
+        }
+        mouthBubbleBursts.removeAll { $0.isComplete }
     }
 
     private static func smoothingFactor(deltaTime: TimeInterval, timeConstant: TimeInterval) -> Float {
