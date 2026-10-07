@@ -41,6 +41,22 @@ keep their full size until they disappear.
 Close and reopen the mouth to emit another burst. If tracking is lost, the fins
 transition to an idle sway.
 
+### Audio-reactive bubbles (proof of concept)
+
+The app also listens to the microphone (allow microphone access when prompted;
+audio is analyzed live and never recorded). `ARFace/Audio/AudioLevelMonitor.swift`
+measures the overall level and three frequency bands — low (20–250 Hz), mid
+(250–2,000 Hz), and high (2,000–10,000 Hz) — each normalized to 0–1 between
+-60 and -10 dBFS and smoothed. The levels are logged about four times a second
+at debug level under the `ARFace` subsystem, `Audio` category (stream them with
+Console or `log stream --level debug --predicate 'category == "Audio"'`).
+
+- Strong lows (above 0.6) while the mouth is open (above 0.3) release a stream of
+  big bubbles from the mouth; louder lows stream faster.
+- Strong highs (above 0.45) release a stream of small bubbles from the mouth.
+
+Thresholds are defined in `ARFace/Avatar/AvatarController.swift`.
+
 The underwater scene also includes rising ambient bubbles with the same buoyancy,
 drag, and turbulent drift as mouth bubbles, animated spotlights,
 shadows, and caustic lighting. On iOS 26 and later, bubbles are rendered as glass
@@ -88,10 +104,12 @@ expanded state between launches:
   Adjust how many blend shapes are listed with the stepper.
 - **Avatar** reports where the avatar is rendered, how many blend-shape targets
   were bound, and the applied `jawOpen` value.
+- **Audio** shows microphone status and live overall, low, mid, and high levels;
+  the low and high meters turn orange above their bubble thresholds.
 - **Rendering** reports frame rate and includes a **Camera Z** slider to adjust
   the virtual camera's distance from 0.10 to 3.00 meters (default: 0.75 meters),
-  including when the avatar is rendered on an external display. It provides switches for caustics, ambient
-  and mouth bubbles, animated spotlights, directional shadows, blend shapes,
+  including when the avatar is rendered on an external display. It provides switches for caustics, ambient,
+  mouth, and audio bubbles, animated spotlights, directional shadows, blend shapes,
   and fin animation.
 - **Animations** lets you filter the avatar's animations, play one once, loop it,
   or stop all animations. When connected to an external display, these controls

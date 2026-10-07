@@ -44,8 +44,12 @@ struct ContentView: View {
         .onAppear {
             tracker.setDebugEnabled(avatarSession.showDebug)
             tracker.start()
+            if tracker.isSupported { avatarSession.audioMonitor.start() }
         }
-        .onDisappear { tracker.stop() }
+        .onDisappear {
+            tracker.stop()
+            avatarSession.audioMonitor.stop()
+        }
         .onChange(of: avatarSession.showDebug) { _, enabled in tracker.setDebugEnabled(enabled) }
     }
 

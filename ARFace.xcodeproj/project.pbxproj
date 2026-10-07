@@ -248,6 +248,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Fish face";
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_NSCameraUsageDescription = "ARFace uses the TrueDepth camera to track your facial expressions and animate a 3D avatar.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "ARFace listens to microphone levels to release bubbles from the fish's mouth. Audio is not recorded or stored.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
@@ -282,6 +283,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Fish face";
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_NSCameraUsageDescription = "ARFace uses the TrueDepth camera to track your facial expressions and animate a 3D avatar.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "ARFace listens to microphone levels to release bubbles from the fish's mouth. Audio is not recorded or stored.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;

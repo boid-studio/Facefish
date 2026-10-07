@@ -62,7 +62,12 @@ struct AvatarView: View {
                     avatarDebug.recordFrame(deltaTime: event.deltaTime)
                     let options = avatarDebug.renderOptions
                     underwater.update(deltaTime: event.deltaTime, options: options)
-                    controller.apply(tracker.snapshot(), deltaTime: event.deltaTime, options: options)
+                    controller.apply(
+                        tracker.snapshot(),
+                        audio: AvatarSession.shared.audioMonitor.snapshot(),
+                        deltaTime: event.deltaTime,
+                        options: options
+                    )
                     if screenSpaceGlass {
                         glassFrame.update(
                             spheres: underwater.glassSpheres + controller.glassSpheres,

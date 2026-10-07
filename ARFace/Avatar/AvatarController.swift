@@ -65,6 +65,13 @@ final class AvatarController {
     private var mouthBubbleSpheres: BubbleSphereSystem?
     private var mouthIsOpen = false
     private var mouthBubbleBursts: [MouthBubbleBurst] = []
+    /// Loud lows with the mouth at least this open stream big bubbles.
+    static let audioBigBubbleLowThreshold: Float = 0.6
+    static let audioBigBubbleMouthThreshold: Float = 0.3
+    /// Loud highs stream small bubbles.
+    static let audioSmallBubbleHighThreshold: Float = 0.45
+    private var audioBigBubbleBacklog: Float = 0
+    private var audioSmallBubbleBacklog: Float = 0
     private var blendShapesEnabled = true
     private var causticsEnabled = true
 
@@ -96,7 +103,7 @@ final class AvatarController {
             mouthEmitter = bubbles
             mouthBubbleSpheres = BubbleSphereSystem(
                 parent: mouthBubbles,
-                capacity: 64,
+                capacity: 160,
                 radius: 0.01,
                 color: UIColor(red: 0.85, green: 0.97, blue: 1, alpha: 0.85),
                 lifeSpan: 2.8,
@@ -116,7 +123,7 @@ final class AvatarController {
         }
     }
 
-    func apply(_ state: FaceState?, deltaTime: TimeInterval, options: AvatarRenderOptions) {
+    func apply(_ state: FaceState?, audio: AudioLevels = .silent, deltaTime: TimeInterval, options: AvatarRenderOptions) {
         guard deltaTime.isFinite, deltaTime > 0 else { return }
         if deltaTime > 0.25 {
             resetSmoothing()
@@ -231,10 +238,16 @@ final class AvatarController {
 
         if options.mouthBubblesEnabled {
             updateMouthBubbles(jawOpen: appliedJawOpen, deltaTime: Float(min(deltaTime, 0.1)))
+            if options.audioBubblesEnabled {
+                updateAudioBubbles(audio: audio, mouthOpen: mouthOpen, deltaTime: Float(min(deltaTime, 0.1)))
+            } else {
+                resetAudioBubbles()
+            }
             mouthBubbleSpheres?.update(deltaTime: deltaTime)
         } else {
             mouthIsOpen = false
             mouthBubbleBursts.removeAll(keepingCapacity: true)
+            resetAudioBubbles()
         }
     }
 
@@ -283,6 +296,7 @@ final class AvatarController {
         smoothedBlendShapes.removeAll(keepingCapacity: true)
         mouthIsOpen = false
         mouthBubbleBursts.removeAll(keepingCapacity: true)
+        resetAudioBubbles()
         finNeutralRotation = nil
     }
 
@@ -330,6 +344,69 @@ final class AvatarController {
             }
         }
         mouthBubbleBursts.removeAll { $0.isComplete }
+    }
+
+    /// Streams bubbles from the mouth while the microphone is loud: big ones for strong lows with the
+    /// mouth open, small ones for strong highs. Louder sound streams faster.
+    private func updateAudioBubbles(audio: AudioLevels, mouthOpen: Float, deltaTime: Float) {
+        guard let mouthEmitter, let mouthBubbleSpheres else { return }
+
+        func stream(
+            _ backlog: inout Float,
+            level: Float,
+            threshold: Float,
+            rate: ClosedRange<Float>
+        ) -> Int {
+            guard level > threshold else {
+                backlog = 0
+                return 0
+            }
+            let excess = (level - threshold) / (1 - threshold)
+            backlog += (rate.lowerBound + excess * (rate.upperBound - rate.lowerBound)) * deltaTime
+            let count = Int(backlog)
+            backlog -= Float(count)
+            return count
+        }
+
+        let bigCount = stream(
+            &audioBigBubbleBacklog,
+            level: mouthOpen > Self.audioBigBubbleMouthThreshold ? audio.low : 0,
+            threshold: Self.audioBigBubbleLowThreshold,
+            rate: 6...16
+        )
+        let smallCount = stream(
+            &audioSmallBubbleBacklog,
+            level: audio.high,
+            threshold: Self.audioSmallBubbleHighThreshold,
+            rate: 15...45
+        )
+        guard bigCount + smallCount > 0 else { return }
+
+        let origin = mouthEmitter.convert(position: .zero, to: mouthBubbles)
+        let direction = simd_normalize(mouthEmitter.convert(direction: [0, -1, 0], to: mouthBubbles))
+        for _ in 0..<bigCount {
+            mouthBubbleSpheres.emit(
+                count: 1,
+                origin: origin,
+                direction: direction,
+                radiusScale: Float.random(in: 0.7...1.0),
+                speedScale: Float.random(in: 0.15...0.3)
+            )
+        }
+        for _ in 0..<smallCount {
+            mouthBubbleSpheres.emit(
+                count: 1,
+                origin: origin,
+                direction: direction,
+                radiusScale: Float.random(in: 0.1...0.22),
+                speedScale: Float.random(in: 0.2...0.5)
+            )
+        }
+    }
+
+    private func resetAudioBubbles() {
+        audioBigBubbleBacklog = 0
+        audioSmallBubbleBacklog = 0
     }
 
     private static func smoothingFactor(deltaTime: TimeInterval, timeConstant: TimeInterval) -> Float {

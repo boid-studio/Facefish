@@ -7,6 +7,7 @@ struct DebugInspector: View {
 
     @AppStorage("debug.section.tracking") private var trackingExpanded = true
     @AppStorage("debug.section.avatar") private var avatarExpanded = true
+    @AppStorage("debug.section.audio") private var audioExpanded = true
     @AppStorage("debug.section.rendering") private var renderingExpanded = true
     @AppStorage("debug.section.animations") private var animationsExpanded = false
     @AppStorage("debug.section.externalDisplay") private var externalDisplayExpanded = false
@@ -22,6 +23,9 @@ struct DebugInspector: View {
                     model: avatarSession.avatarDebug,
                     rendersExternally: avatarSession.externalDisplayScene != nil
                 )
+            }
+            Section("Audio", isExpanded: $audioExpanded) {
+                AudioDebugSection(monitor: avatarSession.audioMonitor)
             }
             Section("Rendering", isExpanded: $renderingExpanded) {
                 RenderingDebugSection(model: avatarSession.avatarDebug)
