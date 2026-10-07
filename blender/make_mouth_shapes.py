@@ -96,7 +96,7 @@ def edge_loop(vi):
             return loop
         loop.append(w.index)
         if len(w.link_edges) != 4 or len(loop) > 200:
-            raise SystemExit(f"ring 0 is not a clean quad loop (stopped at vertex {w.index})")
+            raise RuntimeError(f"ring 0 is not a clean quad loop (stopped at vertex {w.index})")
         faces = set(e.link_faces)
         v, e = w, next(x for x in w.link_edges if x is not e and not (set(x.link_faces) & faces))
 
@@ -117,7 +117,7 @@ while around:
                 stack.append(j)
     parts.append(part)
 if len(parts) != 2:
-    raise SystemExit(f"expected two rings next to ring 0, found {len(parts)}")
+    raise RuntimeError(f"expected two rings next to ring 0, found {len(parts)}")
 outer = min(parts, key=lambda p: B[list(p), 1].min())
 inner = parts[1] if outer is parts[0] else parts[0]
 for sign, first in ((1, outer), (-1, inner)):

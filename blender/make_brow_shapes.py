@@ -73,7 +73,7 @@ for s, name in EYES.items():
     # the socket: the boundary vertices around this eye, then edge rings outward from it
     socket = {i for i in boundary if np.linalg.norm(B[i] - c) < 0.35}
     if not socket:
-        raise SystemExit(f"no eye socket (open edge loop) found around {name}")
+        raise RuntimeError(f"no eye socket (open edge loop) found around {name}")
     ring = {i: 0 for i in socket}
     cur, k = socket, 0
     while cur and k < max(RING):

@@ -50,7 +50,7 @@ if argv:
 if TAKE is None:
     takes = sorted(glob.glob(os.path.join(ROOT, "recordings", "take-*.json")))
     if not takes:
-        raise SystemExit(f"no takes in {os.path.join(ROOT, 'recordings')}; record one in the app first (press r)")
+        raise RuntimeError(f"no takes in {os.path.join(ROOT, 'recordings')}; record one in the app first (press r)")
     TAKE = takes[-1]
 if not os.path.isabs(TAKE):
     TAKE = os.path.join(ROOT, TAKE)

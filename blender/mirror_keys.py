@@ -59,13 +59,15 @@ for _ in range(50):                      # drifted vertices: the one twin the ma
         break
 twin = np.array(twin)
 if (twin < 0).any() or not (twin[twin] == np.arange(n)).all():
-    raise SystemExit(f"the mesh isn't mirror-symmetric in its connections ({int((twin < 0).sum())} vertices without a twin)")
+    raise RuntimeError(f"the mesh isn't mirror-symmetric in its connections ({int((twin < 0).sum())} vertices without a twin)")
 
 F = np.array([-1.0, 1.0, 1.0])
 made = []
 for src, dst in PAIRS.items():
     if src not in kb:
-        raise SystemExit(f"no shape key {src!r}")
+        import difflib
+        close = difflib.get_close_matches(src, [k.name for k in kb], n=3)
+        raise RuntimeError(f"no shape key {src!r}" + (f"; did you mean {', '.join(close)}?" if close else ""))
     D = (get(kb[src]) - B)[twin] * F          # the twin's movement, mirrored
     key = kb.get(dst)
     if key is None:

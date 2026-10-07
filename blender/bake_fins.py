@@ -22,10 +22,10 @@ IMAGE = "fins_bake"
 
 img = bpy.data.images.get(IMAGE)
 if img is None:
-    raise SystemExit(f"No image called {IMAGE!r}. Create it in the Image Editor first (e.g. 2048 x 2048).")
+    raise RuntimeError(f"No image called {IMAGE!r}. Create it in the Image Editor first (e.g. 2048 x 2048).")
 fins = [o for o in bpy.context.view_layer.objects if o.type == "MESH" and o.name.startswith("Fin_") and o.visible_get()]
 if not fins:
-    raise SystemExit("No visible Fin_* meshes.")
+    raise RuntimeError("No visible Fin_* meshes.")
 
 if bpy.context.mode != "OBJECT":
     bpy.ops.object.mode_set(mode="OBJECT")

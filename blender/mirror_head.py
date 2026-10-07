@@ -64,7 +64,7 @@ for _ in range(50):                      # drifted vertices: the one twin the ma
         break
 twin = np.array(twin)
 if (twin < 0).any() or not (twin[twin] == np.arange(n)).all():
-    raise SystemExit(f"the mesh isn't mirror-symmetric in its connections ({int((twin < 0).sum())} vertices without a twin)")
+    raise RuntimeError(f"the mesh isn't mirror-symmetric in its connections ({int((twin < 0).sum())} vertices without a twin)")
 
 F = np.array([-1.0, 1.0, 1.0])
 if KEEP == "average":
@@ -74,7 +74,7 @@ elif KEEP in ("-X", "+X"):
     kept = B[:, 0] * sign > B[twin, 0] * sign      # of each pair, the twin further out on the kept side
     S = np.where(kept[:, None], B, B[twin] * F)
 else:
-    raise SystemExit(f'KEEP must be "average", "-X" or "+X", not {KEEP!r}')
+    raise RuntimeError(f'KEEP must be "average", "-X" or "+X", not {KEEP!r}')
 S[twin == np.arange(n), 0] = 0.0
 D = S - B
 for k in keys[1:]:
