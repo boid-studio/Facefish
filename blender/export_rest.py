@@ -36,6 +36,25 @@ for me in bpy.data.meshes:
     if me.shape_keys:
         for k in me.shape_keys.key_blocks:
             k.value = 0.0
+# Rigs hidden in the viewport (to tidy up while sculpting) still belong in the export when a visible
+# part hangs off them or is skinned to them; without them the fins come out loose and turned wrong.
+shown = []
+pending = [o for o in bpy.data.objects if o.visible_get()]
+while pending:
+    o = pending.pop()
+    needs = [m.object for m in o.modifiers if m.type == "ARMATURE" and m.object]
+    if o.parent:
+        needs.append(o.parent)
+    for r in needs:
+        if r.type == "ARMATURE" and not r.visible_get():
+            r.hide_set(False)
+            r.hide_viewport = False
+            if r.visible_get():
+                shown.append(r.name)
+                pending.append(r)
+if shown:
+    print("[export] hidden rigs included because visible parts use them:", shown)
+
 bones = {}
 for o in bpy.data.objects:
     if o.type == "ARMATURE":
