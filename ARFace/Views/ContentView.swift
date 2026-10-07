@@ -2,11 +2,16 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var avatarSession = AvatarSession.shared
+    @State private var bluetooth = BluetoothControl.shared
+    @State private var showBluetooth = false
+    @Environment(\.scenePhase) private var scenePhase
     private var tracker: FaceTracker { avatarSession.tracker }
 
     var body: some View {
         Group {
-            if tracker.isSupported {
+            if bluetooth.isControlMode {
+                BluetoothControlView()
+            } else if tracker.isSupported {
                 Group {
                     if avatarSession.externalDisplayScene != nil {
                         VStack(spacing: 12) {
@@ -31,33 +36,64 @@ struct ContentView: View {
                     .overlay(alignment: .topTrailing) {
                         if avatarSession.showDebug { CameraDebugView(tracker: tracker).padding(.top, 48).padding(.trailing, 12) }
                     }
-                    .safeAreaInset(edge: .bottom) { controls }
-                    .inspector(isPresented: $avatarSession.showDebug) { DebugInspector() }
+                    .overlay(alignment: .bottomTrailing) { settingsButton }
+                    .inspector(isPresented: $avatarSession.showDebug) {
+                        DebugInspector(onShowControl: { showBluetooth = true })
+                    }
             } else {
                 ContentUnavailableView(
                     "Face tracking unavailable",
                     systemImage: "faceid",
                     description: Text("This device needs a TrueDepth (Face ID) camera.")
                 )
+                .safeAreaInset(edge: .bottom) { bluetoothButton.padding() }
             }
         }
+        .sheet(isPresented: $showBluetooth) { BluetoothControlView(showsDone: true) }
         .onAppear {
             tracker.setDebugEnabled(avatarSession.showDebug)
-            tracker.start()
+            if !bluetooth.isControlMode { tracker.start() }
         }
         .onDisappear { tracker.stop() }
         .onChange(of: avatarSession.showDebug) { _, enabled in tracker.setDebugEnabled(enabled) }
+        .onChange(of: bluetooth.isControlMode) { _, isControlMode in
+            if isControlMode {
+                showBluetooth = false
+                avatarSession.showDebug = false
+                tracker.stop()
+            } else if scenePhase == .active {
+                tracker.start()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background {
+                bluetooth.stop()
+                tracker.stop()
+            } else if phase == .active, !bluetooth.isControlMode {
+                tracker.start()
+            }
+        }
     }
 
-    private var controls: some View {
-        HStack(spacing: 12) {
-            Toggle("Mirror", systemImage: "arrow.left.and.right", isOn: $avatarSession.mirrored)
-            Toggle("Debug", systemImage: "slider.horizontal.3", isOn: $avatarSession.showDebug)
+    private var bluetoothButton: some View {
+        Button("Control", systemImage: "antenna.radiowaves.left.and.right") {
+            showBluetooth = true
         }
-        .toggleStyle(.button)
-        .padding(8)
-        .background(.ultraThinMaterial, in: Capsule())
-        .padding(.bottom, 8)
+    }
+
+    private var settingsButton: some View {
+        Button {
+            avatarSession.showDebug.toggle()
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Settings")
+        .padding(.bottom, 24)
+        .padding(.trailing, 16)
     }
 }
 

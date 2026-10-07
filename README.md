@@ -59,6 +59,46 @@ glass compute pipeline cannot be created.
 Rendering updates and debug animation playback
 stop when an avatar view is removed.
 
+## Bluetooth control
+
+The app starts in **main** mode and does not need a Bluetooth connection to
+animate the avatar. Tap **Control** to open Bluetooth settings and the received
+command log. Turn on **Control mode** to use this device as a remote instead;
+face tracking and avatar rendering are paused on the controller. A controller
+does not need a TrueDepth camera.
+
+1. On the main device, tap **Control > Allow pairing**.
+2. On the second device, turn on **Control mode**, tap **Find main app**, and
+   select the main device from the nearby list. The short device identifier
+   distinguishes devices with the same name.
+3. Allow Bluetooth access on both devices and accept the iOS Bluetooth pairing
+   prompt if shown. Commands become available once the encrypted connection
+   and Facefish handshake finish.
+4. Use **Ping**, **Mirror on**, or **Mirror off**. Ping only creates a log entry;
+   the Mirror commands also update the main avatar, including on an external
+   display. Successful delivery means the main app acknowledged the command.
+5. The main app's **Received commands** section shows the latest 100 commands,
+   newest first, with receipt times and a **Clear log** button.
+
+Pairing is opt-in on the main device and accepts one controller at a time.
+Only enable it near the controller you intend to use: the first encrypted
+subscriber is accepted, without a separate in-app identity confirmation.
+The custom BLE service uses an encrypted read/write command characteristic and
+an encrypted notification subscription to track the connection. Commands use a
+versioned JSON envelope and an allowlist; unknown or oversized messages are
+rejected. This is a foreground-only scaffold, not a background remote service.
+Keep both apps open; backgrounding either app, changing mode, or tapping
+**Disconnect** ends the app connection. Pair again to reconnect. iOS may retain
+the system Bluetooth bond, so subsequent connections may not show a pairing
+prompt. Mode and command logs are not persisted across launches.
+
+To check on two physical iOS devices, verify pairing, all three commands, main
+log ordering/clearing, disconnect/reconnect, role changes, Bluetooth-off and
+permission-denied states, and background/foreground transitions. Confirm that
+the main avatar still works before pairing and after losing the controller,
+and that a device without TrueDepth can access controller mode. BLE cannot be
+validated using the simulator alone.
+
 ## Glass rendering checks
 
 On a Metal-capable Mac, run `xcrun swift Tests/GlassBubbleRenderingChecks.swift`.

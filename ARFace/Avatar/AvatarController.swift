@@ -254,7 +254,10 @@ final class AvatarController {
         let steps = max(1, Int((deltaTime / (1.0 / 120)).rounded(.up)))
         let stepTime = deltaTime / Float(steps)
         for _ in 0..<steps {
-            followVelocity += (stiffness * (target - followPosition) - 2 * ratio * sqrt(stiffness) * followVelocity) * stepTime
+            let springForce: SIMD3<Float> = stiffness * (target - followPosition)
+            let damping: Float = 2 * ratio * sqrt(stiffness)
+            let dampingForce: SIMD3<Float> = damping * followVelocity
+            followVelocity += (springForce - dampingForce) * stepTime
             followPosition += followVelocity * stepTime
         }
     }

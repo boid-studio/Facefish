@@ -9,6 +9,15 @@ struct ARFaceApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onAppear {
+                    BluetoothControl.shared.onCommand = { command in
+                        switch command {
+                        case .ping: break
+                        case .mirrorOn: AvatarSession.shared.mirrored = true
+                        case .mirrorOff: AvatarSession.shared.mirrored = false
+                        }
+                    }
+                }
         }
     }
 }
