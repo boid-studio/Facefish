@@ -241,6 +241,7 @@ final class UnderwaterSceneController {
         }
         addLights(to: scene)
         addBackdrop(to: scene.findEntity(named: "Backdrop") ?? scene)
+        addMarineSnow(to: scene)
         if let emitter = scene.findEntity(named: "BubbleEmitter") {
             ambientBubbles = BubbleSphereSystem(
                 parent: emitter,
@@ -303,7 +304,17 @@ final class UnderwaterSceneController {
             let partCount = existingModel.mesh.contents.models.map(\.parts.count).reduce(0, +)
             let blendShapeMapping = BlendShapeWeightsMapping(meshResource: existingModel.mesh)
             let hasBlendShapes = !BlendShapeWeightsComponent(weightsMapping: blendShapeMapping).weightSet.isEmpty
-            if partCount == 1, !hasBlendShapes {
+            if entity.name == "Head", let faceMaterials = faceCausticMaterials(for: existingModel.materials) {
+                // The body: strong caustics on the face.
+                var model = existingModel
+                model.materials = faceMaterials.enabled
+                entity.components.set(model)
+                materialOverrides.append(MaterialOverride(
+                    entity: entity,
+                    enabledMaterials: faceMaterials.enabled,
+                    disabledMaterials: faceMaterials.disabled
+                ))
+            } else if partCount == 1, !hasBlendShapes {
                 var model = existingModel
                 let originalMaterials = model.materials
                 let enabledMaterials = isEyelid ? originalMaterials : originalMaterials.map {
@@ -326,6 +337,29 @@ final class UnderwaterSceneController {
         for child in entity.children {
             applyCaustics(to: child, inheritedFin: fin, inheritedEyelid: isEyelid)
         }
+    }
+
+    /// Face caustic materials for the body (with and without caustics).
+    private func faceCausticMaterials(for materials: [any Material]) -> (enabled: [any Material], disabled: [any Material])? {
+        guard let library else { return nil }
+        func make(strength: Float) -> [any Material]? {
+            var result: [any Material] = []
+            for base in materials {
+                guard var material = try? CustomMaterial(
+                    from: base,
+                    surfaceShader: .init(named: "faceCausticSurface", in: library)
+                ) else { return nil }
+                // Pattern frequency per metre, focus, strength.
+                material.custom.value = [22, 9, strength, 0]
+                result.append(material)
+            }
+            return result
+        }
+        guard let enabled = make(strength: 4.5), let disabled = make(strength: 0) else {
+            logger.error("Face caustic material unavailable; the body keeps its own material.")
+            return nil
+        }
+        return (enabled, disabled)
     }
 
     private func customMaterial(
@@ -359,6 +393,39 @@ final class UnderwaterSceneController {
             logger.error("Caustic material unavailable: \(error.localizedDescription)")
             return nil
         }
+    }
+
+    // MARK: - Marine snow
+
+    /// Faint specks drifting slowly through the water (marine snow), always there.
+    private func addMarineSnow(to scene: Entity) {
+        var particles = ParticleEmitterComponent()
+        particles.emitterShape = .box
+        particles.birthLocation = .volume
+        particles.emitterShapeSize = [1.2, 1.0, 0.8]
+        particles.emissionDirection = [0, -1, 0]
+        particles.speed = 0.004
+        particles.speedVariation = 0.003
+        particles.particlesInheritTransform = false
+        var specks = particles.mainEmitter
+        specks.birthRate = 45
+        specks.lifeSpan = 6
+        specks.lifeSpanVariation = 2
+        specks.size = 0.0035
+        specks.sizeVariation = 0.0015
+        specks.spreadingAngle = .pi / 3
+        specks.blendMode = .alpha
+        specks.isLightingEnabled = false
+        specks.opacityCurve = .gradualFadeInOut
+        specks.noiseStrength = 0.006
+        specks.noiseScale = 2
+        specks.noiseAnimationSpeed = 0.15
+        specks.color = .constant(.single(UIColor(red: 0.88, green: 0.97, blue: 1.0, alpha: 0.9)))
+        particles.mainEmitter = specks
+        let entity = Entity()
+        entity.position = [0, 0, -0.1]
+        entity.components.set(particles)
+        scene.addChild(entity)
     }
 
     // MARK: - Lighting

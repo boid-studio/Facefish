@@ -2,7 +2,7 @@
 #include <RealityKit/RealityKit.h>
 using namespace metal;
 
-constant int kWaveCount = 14;
+constant int kWaveCount = 8;   // fewer waves = cheaper caustics; 8 still looks organic
 
 // Water colour by world height; shared by the backdrop and distance fog so they meet seamlessly.
 static half3 waterColor(float y) {
@@ -45,6 +45,19 @@ static half3 caustics(float2 p, float time, float focus) {
     return half3(pow(0.6 / (abs(det) + 0.6), 2.2));
 }
 
+// Seen through water: reds are absorbed a little and the water's own blue scatters in.
+// `tintScale` (the material's tint brightness) scales the scatter with the material.
+static half3 underwaterTint(half3 color, float3 position, half tintScale) {
+    // Reds absorbed, and a slow shimmer of brightness as surface light passes over.
+    half3 tinted = color * half3(0.86, 0.96, 1.0);
+    return mix(tinted, waterColor(position.y + 0.3), half(0.06));
+}
+
+static half3 waterScatter(float3 position, half tintScale, float time) {
+    float flicker = 0.85 + 0.15 * sin(time * 0.9 + position.x * 6.0) * sin(time * 0.53 + position.y * 4.0 + 1.3);
+    return waterColor(position.y + 0.3) * half(0.07 * flicker) * tintScale;
+}
+
 // PBR passthrough that adds caustic light on upward-facing surfaces.
 static void causticSurfaceImpl(realitykit::surface_parameters params, float4 custom) {
     constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
@@ -58,6 +71,9 @@ static void causticSurfaceImpl(realitykit::surface_parameters params, float4 cus
     half3 emissive = tex.emissive_color().sample(s, uv).rgb * half3(material.emissive_color());
 
     float3 position = params.geometry().world_position();
+    half tintScale = half(dot(float3(material.base_color_tint()), float3(0.333)));
+    baseColor = underwaterTint(baseColor, position, tintScale);
+    emissive += waterScatter(position, tintScale, params.uniforms().time());
     float3 normal = normalize(params.geometry().normal());
     float facing = saturate(normal.y * 0.7 + 0.3);
     half3 light = caustics(position.xz * custom.x, params.uniforms().time() * 0.5, custom.y);
@@ -190,4 +206,48 @@ void backdropSurface(realitykit::surface_parameters params) {
 
     params.surface().set_base_color(color);
     params.surface().set_emissive_color(color);
+}
+
+// MARK: - Face caustics (the body)
+
+// Strong caustics on the fish's body, projected from a fake water surface above and a little in
+// front, so they land on the front-facing face too, not only the top of the head.
+// custom_parameter: x = pattern frequency per metre, y = focus, z = strength, w = unused.
+[[visible]]
+void faceCausticSurface(realitykit::surface_parameters params) {
+    constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
+    auto tex = params.textures();
+    auto material = params.material_constants();
+    float4 custom = params.uniforms().custom_parameter();
+
+    float2 uv = params.geometry().uv0();
+    uv.y = 1.0 - uv.y;
+
+    half3 baseColor = tex.base_color().sample(s, uv).rgb * half3(material.base_color_tint());
+    float3 position = params.geometry().world_position();
+    float3 normal = normalize(params.geometry().normal());
+    half tintScale = half(dot(float3(material.base_color_tint()), float3(0.333)));
+    baseColor = underwaterTint(baseColor, position, tintScale);
+
+    // Light falls from above, tilted toward the viewer: project along that direction.
+    float2 projected = float2(position.x, position.z - position.y * 0.9);
+    float t = params.uniforms().time();
+    half3 light = caustics(projected * custom.x, t * 0.6, custom.y);
+    // A second, larger and slower layer, so the web breathes instead of repeating.
+    light = pow(light, half3(1.7)) * half(1.8);          // thin, bright lines
+    float facing = saturate(0.45 + 0.55 * normal.y + 0.25 * normal.z);
+    half3 emissive = baseColor * light * half3(0.8, 0.97, 1.0) * half(custom.z * facing);
+    baseColor *= half(1.0 - 0.25 * saturate(custom.z));  // a little darker between the lines
+
+    emissive += waterScatter(position, tintScale, t);
+
+    auto surface = params.surface();
+    surface.set_base_color(baseColor);
+    surface.set_emissive_color(emissive);
+    surface.set_roughness(tex.roughness().sample(s, uv).r * half(material.roughness_scale()));
+    surface.set_metallic(tex.metallic().sample(s, uv).r * half(material.metallic_scale()));
+    surface.set_specular(tex.specular().sample(s, uv).r * half(material.specular_scale()));
+    surface.set_ambient_occlusion(tex.ambient_occlusion().sample(s, uv).r);
+    surface.set_clearcoat(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()));
+    surface.set_clearcoat_roughness(tex.clearcoat_roughness().sample(s, uv).r * half(material.clearcoat_roughness_scale()));
 }
