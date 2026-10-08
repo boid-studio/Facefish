@@ -40,18 +40,26 @@ final class ExternalDisplaySceneDelegate: NSObject, UIWindowSceneDelegate {
 
 private struct ExternalCanvasView: View {
     @State private var avatarSession = AvatarSession.shared
+    @State private var bluetooth = BluetoothControl.shared
 
     var body: some View {
         GeometryReader { geometry in
             let side = max(min(geometry.size.width, geometry.size.height), 1)
 
-            AvatarView(
-                tracker: avatarSession.tracker,
-                mirrored: avatarSession.mirrored,
-                showsLoadError: false
-            )
-            .frame(width: side, height: side)
-            .clipped()
+            Group {
+                if bluetooth.isControlMode {
+                    Text("Control mode")
+                        .foregroundStyle(.white)
+                } else {
+                    AvatarView(
+                        tracker: avatarSession.tracker,
+                        mirrored: avatarSession.mirrored,
+                        showsLoadError: false
+                    )
+                    .frame(width: side, height: side)
+                    .clipped()
+                }
+            }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .ignoresSafeArea()

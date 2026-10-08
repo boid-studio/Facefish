@@ -9,6 +9,15 @@ struct ARFaceApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onAppear {
+                    BluetoothControl.shared.onCommand = { command in
+                        switch command {
+                        case .ping: break
+                        case .mirrorOn: AvatarSession.shared.mirrored = true
+                        case .mirrorOff: AvatarSession.shared.mirrored = false
+                        }
+                    }
+                }
         }
     }
 }
@@ -18,6 +27,7 @@ final class AvatarSession {
     static let shared = AvatarSession()
 
     let tracker = FaceTracker()
+    let audioMonitor = AudioLevelMonitor()
     let avatarDebug = AvatarDebugModel()
     var mirrored = true
     var showDebug = false

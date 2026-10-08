@@ -41,6 +41,22 @@ keep their full size until they disappear.
 Close and reopen the mouth to emit another burst. If tracking is lost, the fins
 transition to an idle sway.
 
+### Audio-reactive bubbles (proof of concept)
+
+The app also listens to the microphone (allow microphone access when prompted;
+audio is analyzed live and never recorded). `ARFace/Audio/AudioLevelMonitor.swift`
+measures the overall level and three frequency bands — low (20–250 Hz), mid
+(250–2,000 Hz), and high (2,000–10,000 Hz) — each normalized to 0–1 between
+-60 and -10 dBFS and smoothed. The levels are logged about four times a second
+at debug level under the `ARFace` subsystem, `Audio` category (stream them with
+Console or `log stream --level debug --predicate 'category == "Audio"'`).
+
+- Strong lows (above 0.6) while the mouth is open (above 0.3) release a stream of
+  big bubbles from the mouth; louder lows stream faster.
+- Strong highs (above 0.45) release a stream of small bubbles from the mouth.
+
+Thresholds are defined in `ARFace/Avatar/AvatarController.swift`.
+
 The underwater scene also includes rising ambient bubbles with the same buoyancy,
 drag, and turbulent drift as mouth bubbles, animated spotlights,
 shadows, and caustic lighting. On iOS 26 and later, bubbles are rendered as glass
@@ -58,6 +74,46 @@ without scene refraction. The same fallback is used, with an error logged, if th
 glass compute pipeline cannot be created.
 Rendering updates and debug animation playback
 stop when an avatar view is removed.
+
+## Bluetooth control
+
+The app starts in **main** mode and does not need a Bluetooth connection to
+animate the avatar. Tap **Control** to open Bluetooth settings and the received
+command log. Turn on **Control mode** to use this device as a remote instead;
+face tracking and avatar rendering are paused on the controller. A controller
+does not need a TrueDepth camera.
+
+1. On the main device, tap **Control > Allow pairing**.
+2. On the second device, turn on **Control mode**, tap **Find main app**, and
+   select the main device from the nearby list. The short device identifier
+   distinguishes devices with the same name.
+3. Allow Bluetooth access on both devices and accept the iOS Bluetooth pairing
+   prompt if shown. Commands become available once the encrypted connection
+   and Facefish handshake finish.
+4. Use **Ping**, **Mirror on**, or **Mirror off**. Ping only creates a log entry;
+   the Mirror commands also update the main avatar, including on an external
+   display. Successful delivery means the main app acknowledged the command.
+5. The main app's **Received commands** section shows the latest 100 commands,
+   newest first, with receipt times and a **Clear log** button.
+
+Pairing is opt-in on the main device and accepts one controller at a time.
+Only enable it near the controller you intend to use: the first encrypted
+subscriber is accepted, without a separate in-app identity confirmation.
+The custom BLE service uses an encrypted read/write command characteristic and
+an encrypted notification subscription to track the connection. Commands use a
+versioned JSON envelope and an allowlist; unknown or oversized messages are
+rejected. This is a foreground-only scaffold, not a background remote service.
+Keep both apps open; backgrounding either app, changing mode, or tapping
+**Disconnect** ends the app connection. Pair again to reconnect. iOS may retain
+the system Bluetooth bond, so subsequent connections may not show a pairing
+prompt. Mode and command logs are not persisted across launches.
+
+To check on two physical iOS devices, verify pairing, all three commands, main
+log ordering/clearing, disconnect/reconnect, role changes, Bluetooth-off and
+permission-denied states, and background/foreground transitions. Confirm that
+the main avatar still works before pairing and after losing the controller,
+and that a device without TrueDepth can access controller mode. BLE cannot be
+validated using the simulator alone.
 
 ## Glass rendering checks
 
@@ -88,10 +144,12 @@ expanded state between launches:
   Adjust how many blend shapes are listed with the stepper.
 - **Avatar** reports where the avatar is rendered, how many blend-shape targets
   were bound, and the applied `jawOpen` value.
+- **Audio** shows microphone status and live overall, low, mid, and high levels;
+  the low and high meters turn orange above their bubble thresholds.
 - **Rendering** reports frame rate and includes a **Camera Z** slider to adjust
   the virtual camera's distance from 0.10 to 3.00 meters (default: 0.75 meters),
-  including when the avatar is rendered on an external display. It provides switches for caustics, ambient
-  and mouth bubbles, animated spotlights, directional shadows, blend shapes,
+  including when the avatar is rendered on an external display. It provides switches for caustics, ambient,
+  mouth, and audio bubbles, animated spotlights, directional shadows, blend shapes,
   and fin animation.
 - **Animations** lets you filter the avatar's animations, play one once, loop it,
   or stop all animations. When connected to an external display, these controls
