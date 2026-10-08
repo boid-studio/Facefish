@@ -4,6 +4,7 @@ struct ContentView: View {
     @State private var avatarSession = AvatarSession.shared
     @State private var bluetooth = BluetoothControl.shared
     @State private var showBluetooth = false
+    @State private var isAvatarReady = false
     @Environment(\.scenePhase) private var scenePhase
     private var tracker: FaceTracker { avatarSession.tracker }
 
@@ -28,15 +29,25 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(.black)
                     } else {
-                        AvatarView(tracker: tracker, mirrored: avatarSession.mirrored)
+                        AvatarView(
+                            tracker: tracker,
+                            mirrored: avatarSession.mirrored,
+                            isReady: $isAvatarReady
+                        )
                     }
                 }
                     .ignoresSafeArea()
-                    .overlay(alignment: .top) { TrackingStatusBanner(tracker: tracker) }
-                    .overlay(alignment: .topTrailing) {
-                        if avatarSession.showDebug { CameraDebugView(tracker: tracker).padding(.top, 48).padding(.trailing, 12) }
+                    .overlay(alignment: .top) {
+                        if isAvatarReady { TrackingStatusBanner(tracker: tracker) }
                     }
-                    .overlay(alignment: .bottomTrailing) { settingsButton }
+                    .overlay(alignment: .topTrailing) {
+                        if isAvatarReady, avatarSession.showDebug {
+                            CameraDebugView(tracker: tracker).padding(.top, 48).padding(.trailing, 12)
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if isAvatarReady { settingsButton }
+                    }
                     .inspector(isPresented: $avatarSession.showDebug) {
                         DebugInspector(onShowControl: { showBluetooth = true })
                     }
