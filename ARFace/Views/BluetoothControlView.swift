@@ -55,11 +55,11 @@ struct BluetoothControlView: View {
 
                 if bluetooth.isControlMode {
                     Section("Commands") {
-                        ForEach(ControlCommand.allCases) { command in
+                        ForEach([ControlCommand.ping, .mirrorOn, .mirrorOff]) { command in
                             Button(command.title) { bluetooth.send(command) }
                                 .disabled(!bluetooth.isConnected || bluetooth.isSending)
                         }
-                        Text("Ping adds a log entry, Mirror on/off changes avatar mirroring, and move commands trigger an avatar action.")
+                        Text("Ping adds a log entry; Mirror on/off changes the main app's avatar mirroring.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
