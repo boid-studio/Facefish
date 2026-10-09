@@ -20,6 +20,8 @@ final class FaceCalibration {
 
     private(set) var rest: [ARFaceAnchor.BlendShapeLocation: Float] = [:]
     private(set) var isCapturing = false
+    /// Result of the latest capture, for transient UI feedback.
+    private(set) var lastCapture: (succeeded: Bool, date: Date)?
     var enabled = true { didSet { save() } }
     /// 0 = off; 1 = lips closed entirely by raising the jaw.
     var lipSeal: Float = 0.75 { didSet { save() } }
@@ -54,13 +56,17 @@ final class FaceCalibration {
         let elapsed = Date().timeIntervalSince(captureStart)
         guard elapsed >= Self.captureSeconds else { return }
         isCapturing = false
-        guard samples.count >= 5 else { return }
+        guard samples.count >= 5 else {
+            lastCapture = (false, Date())
+            return
+        }
         var median: [ARFaceAnchor.BlendShapeLocation: Float] = [:]
         for location in BlendShapeMapping.allLocations {
             let values = samples.compactMap { $0[location] }.sorted()
             if !values.isEmpty { median[location] = values[values.count / 2] }
         }
         rest = median
+        lastCapture = (true, Date())
         enabled = true
         save()
     }

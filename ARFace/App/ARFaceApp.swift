@@ -17,6 +17,17 @@ struct ARFaceApp: App {
                         case .mirrorOff: AvatarSession.shared.mirrored = false
                         }
                     }
+                    BluetoothControl.shared.onSetting = { setting in
+                        let calibration = FaceCalibration.shared
+                        switch setting {
+                        case .centerFace: calibration.beginCapture()
+                        case .mirror(let on): AvatarSession.shared.mirrored = on
+                        case .faceCalibration(let on): calibration.enabled = on
+                        case .lipSeal(let v): calibration.lipSeal = min(max(v, 0), 1)
+                        case .puckerPriority(let v): calibration.puckerPriority = min(max(v, 0), 1)
+                        case .cameraZ(let v): AvatarSession.shared.avatarDebug.cameraZ = min(max(v, 0.1), 3)
+                        }
+                    }
                 }
         }
     }

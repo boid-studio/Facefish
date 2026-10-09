@@ -72,7 +72,7 @@ struct BluetoothControlView: View {
                             Button("Clear log", role: .destructive) { bluetooth.clearLog() }
                             ForEach(bluetooth.receivedCommands) { entry in
                                 HStack {
-                                    Text(entry.command.title)
+                                    Text(entry.payload.title)
                                     Spacer()
                                     Text(entry.date, style: .time)
                                         .foregroundStyle(.secondary)
