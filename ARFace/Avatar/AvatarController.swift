@@ -38,6 +38,22 @@ final class AvatarController {
     private let eyeRig: EyeRig
     private let lidRig: LidRig
     private var swimMotion = SwimMotion()
+    /// A lap around the bowl (SwimAround.swift) and the quick moves (SwimTrick.swift).
+    private var swimAround = SwimAround()
+    private var activeTrick: SwimTrick?
+    private var lastTrickAngles: (yaw: Float, pitch: Float) = (0, 0)
+    private var swimFacing = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+    /// The lap facing's yaw (radians, kept continuous), how fast it turns, and where the fins steer.
+    private var facingYaw: Float = 0
+    private var facingTurnRate: Float = 0
+    private var swimSteer: Float = 0
+    /// Where quick moves shed bubbles: the tail and side fins, in the swimming body's frame.
+    private var wakeSpots: [BoundingBox] = []
+    private var wakeBubbleBacklog: Float = 0
+    private var appliedBend: Float = 0
+    private var appliedBlush: Float = 0
+    private var headEntity: Entity?
+    private var tailRig: (entity: Entity, rest: float4x4)?
     /// How far the fish swims toward where it faces, as a fraction of its size per unit of facing
     /// (looking 20 degrees up moves it about 15% of its size up).
     var headFollowGain: Float = 0.45
@@ -83,10 +99,18 @@ final class AvatarController {
         lidRig = LidRig(model: model)
         fishSize = targetSize
         fit(model, targetSize: targetSize)
+        headEntity = model.findEntity(named: "Head")
+        if let tail = model.findEntity(named: "TailRig") {
+            tailRig = (tail, tail.transform.matrix)
+        }
         sceneRoot.addChild(root)
         sceneRoot.addChild(mouthBubbles)
         root.addChild(body)
         body.addChild(model)
+        // The tail twice, so half the wake comes off it.
+        wakeSpots = ["TailRig", "TailRig", "PecRig_L", "PecRig_R"].compactMap { name in
+            model.findEntity(named: name).map { $0.visualBounds(relativeTo: body) }
+        }
 
         var unmatched: [String] = []
         bind(model, unmatched: &unmatched)
@@ -216,6 +240,52 @@ final class AvatarController {
             }
         }
 
+        // Moves: a lap around the bowl (facing along the path) or a quick spin or loop (on top of
+        // the live pose). The fins steer and push, the body bends.
+        let moveDelta = Float(min(deltaTime, 0.1))
+        let liveOrientation = root.orientation
+        if let move = nextMove() {
+            start(move, live: liveOrientation)
+        }
+        var bodyTurnRate: Float = 0, bodyNodRate: Float = 0, steer: Float = 0, effort: Float = 0, bend: Float = 0
+        var cover = SIMD2<Float>(repeating: 0), blush: Float = 0
+        let lap = swimAround.update(deltaTime: moveDelta)
+        let lapWeight = lap?.weight ?? 0
+        if let lap {
+            updateSwimFacing(lap, deltaTime: moveDelta)
+            root.orientation = simd_slerp(liveOrientation, swimFacing, lapWeight)
+            bodyTurnRate = facingTurnRate * lapWeight
+            steer = swimSteer * lapWeight
+            effort = lap.effort * lapWeight
+            bend = (0.075 + 0.105 * lap.speed) * lapWeight
+        }
+        var trickOffset = SIMD3<Float>(repeating: 0)
+        if activeTrick != nil {
+            if let pose = activeTrick?.update(deltaTime: moveDelta) {
+                root.orientation = liveOrientation * pose.rotation
+                trickOffset = liveOrientation.act(pose.offset)
+                bodyTurnRate = (pose.yaw - lastTrickAngles.yaw) / moveDelta
+                bodyNodRate = (pose.pitch - lastTrickAngles.pitch) / moveDelta
+                lastTrickAngles = (pose.yaw, pose.pitch)
+                if options.mouthBubblesEnabled {
+                    updateWakeBubbles(turnSpeed: simd_length(SIMD2(bodyTurnRate, bodyNodRate)), deltaTime: moveDelta)
+                }
+                steer = pose.steer
+                effort = pose.effort
+                bend = pose.bend
+                cover = pose.cover
+                blush = pose.blush
+            } else {
+                activeTrick = nil
+            }
+        }
+        finRig.bodyTurnRate = bodyTurnRate
+        finRig.bodyNodRate = bodyNodRate
+        finRig.steer = steer
+        finRig.propulsion = effort
+        finRig.cover = cover
+        applyFaceShader(bend: bend, blush: blush)
+
         // Once fully at rest, nil hands the fins over to their idle swim.
         let finAngles = presence > 0 ? lastFinAngles : nil
         finRig.update(
@@ -233,7 +303,7 @@ final class AvatarController {
         swimAmount += (swimTarget - swimAmount) * Self.smoothingFactor(deltaTime: deltaTime, timeConstant: 0.5)
         swimMotion.amount = swimAmount
         let swim = swimMotion.update(deltaTime: Float(min(deltaTime, 0.1)), mouthOpen: mouthOpen, size: fishSize)
-        root.position = followPosition + swim.offset   // in the scene's frame, so "up" stays up when the head tilts
+        root.position = followPosition * (1 - lapWeight) + swim.offset + (lap?.position ?? .zero) * lapWeight + trickOffset
         body.orientation = swim.rotation     // relative to the head pose
 
         if options.mouthBubblesEnabled {
@@ -251,9 +321,100 @@ final class AvatarController {
         }
     }
 
+    /// The next move asked for in AvatarSession. Asks while a move is running are dropped.
+    private func nextMove() -> SwimMove? {
+        let session = AvatarSession.shared
+        guard !session.pendingMoves.isEmpty else { return nil }
+        let move = session.pendingMoves.removeFirst()
+        return swimAround.isActive || activeTrick != nil ? nil : move
+    }
+
+    /// Starts a move from the fish's pose now (`live`). It goes off to the side the fish already
+    /// faces, or either way when it faces straight out.
+    private func start(_ move: SwimMove, live: simd_quatf) {
+        let forward = live.act([0, 0, 1])
+        let side: Float = abs(forward.x) > 0.12 ? (forward.x > 0 ? 1 : -1) : (Bool.random() ? 1 : -1)
+        switch move {
+        case .lap:
+            swimAround.start(from: followPosition, side: side)
+            swimFacing = live
+            facingYaw = atan2(forward.x, forward.z)
+            facingTurnRate = 0
+        case .spin:
+            activeTrick = SwimTrick(kind: .spin, direction: side)
+        case .loop:
+            activeTrick = SwimTrick(kind: .loop, direction: side)
+        case .blush:
+            activeTrick = SwimTrick(kind: .blush, direction: side)
+        }
+        lastTrickAngles = (0, 0)
+    }
+
+    /// Turns the fish to face along the lap (it faces +Z at rest), nose following climbs and
+    /// dives a little, banking into turns and rolling off level now and then. The body follows a
+    /// beat late; the fins steer toward where the path goes next, so they work before it turns.
+    private func updateSwimFacing(_ lap: SwimAround.Pose, deltaTime: Float) {
+        // Yaw of a direction, kept continuous with the facing so a half turn doesn't flip sides.
+        func yaw(of direction: SIMD3<Float>) -> Float {
+            var angle = atan2(direction.x, direction.z)
+            while angle - facingYaw > .pi { angle -= 2 * .pi }
+            while angle - facingYaw < -.pi { angle += 2 * .pi }
+            return angle
+        }
+        let pitch = -asin(min(max(lap.heading.y, -1), 1)) * 0.6
+        let bank = min(max(-facingTurnRate * 0.16, -0.6), 0.6)
+        let target = simd_quatf(angle: yaw(of: lap.heading), axis: [0, 1, 0])
+            * simd_quatf(angle: pitch, axis: [1, 0, 0])
+            * simd_quatf(angle: bank + lap.roll, axis: [0, 0, 1])
+        swimFacing = simd_slerp(swimFacing, target, (1 - exp(-deltaTime / 0.22)) * lap.bodyFollow)
+        let newYaw = yaw(of: swimFacing.act([0, 0, 1]))
+        let rate = (newYaw - facingYaw) / max(deltaTime, 1e-3)
+        facingYaw = newYaw
+        facingTurnRate += (rate - facingTurnRate) * (1 - exp(-deltaTime / 0.08))
+        swimSteer = min(max((yaw(of: lap.ahead) - facingYaw) / 0.8, -1), 1)
+    }
+
     /// The fish swims a little toward where it faces: look up and it rises, look aside and it swims
     /// over. It follows on a soft spring (slight overshoot), and drifts back to the middle when the
     /// head is straight or tracking is lost.
+
+    /// The body wave while swimming (faceBodyBend in Underwater.metal) with the tail fin riding on
+    /// the bent tail stalk, and the cheeks' blush (faceCausticSurface). `bend` is the bend at the
+    /// tail in mesh units, 0 straightens it; `blush` 0...1.
+    private func applyFaceShader(bend amount: Float, blush: Float) {
+        let blush = blush > 0.002 ? blush : 0
+        guard amount > 0.0005 || appliedBend > 0 || blush != appliedBlush else { return }
+        appliedBend = amount > 0.0005 ? amount : 0
+        appliedBlush = blush
+        let phase = finRig.strokePhase
+        if let headEntity, var model = headEntity.components[ModelComponent.self] {
+            model.materials = model.materials.map { current in
+                guard var material = current as? CustomMaterial else { return current }
+                material.custom.value.x = appliedBend
+                material.custom.value.y = phase
+                material.custom.value.w = blush
+                return material
+            }
+            headEntity.components.set(model)
+        }
+        // Same wave as the shader at the tail stalk (mesh y = 0.704, Blender axes): move the tail
+        // rig sideways and turn it with the body's slope there.
+        if let tailRig {
+            let y: Float = 0.704
+            let w = min(max((y - 0.1) / 0.62, 0), 1)
+            let weight = pow(w * w * (3 - 2 * w), 2)
+            let offset = appliedBend * weight * sin(phase - 3.2 * y)
+            let slope = appliedBend * weight * -3.2 * cos(phase - 3.2 * y)
+            let pivot = SIMD3<Float>(0, 0.704, -0.323)
+            let turn = simd_float4x4(simd_quatf(angle: -atan(slope), axis: [0, 0, 1]))
+            var move = matrix_identity_float4x4
+            move.columns.3 = SIMD4(pivot + SIMD3(offset, 0, 0), 1)
+            var back = matrix_identity_float4x4
+            back.columns.3 = SIMD4(-pivot, 1)
+            tailRig.entity.transform = Transform(matrix: move * turn * back * tailRig.rest)
+        }
+    }
+
     private func updateHeadFollow(enabled: Bool, deltaTime: Float) {
         var target = SIMD3<Float>(repeating: 0)
         if enabled, let rotation = smoothedRotation {
@@ -403,6 +564,37 @@ final class AvatarController {
                 direction: direction,
                 radiusScale: Float.random(in: 0.1...0.22),
                 speedScale: Float.random(in: 0.2...0.5)
+            )
+        }
+    }
+
+    /// Bubbles shed by the tail and side fins in a quick move, more the faster the fish turns,
+    /// flung outward and left behind to rise.
+    private func updateWakeBubbles(turnSpeed: Float, deltaTime: Float) {
+        guard let mouthBubbleSpheres, !wakeSpots.isEmpty, turnSpeed > 2 else {
+            wakeBubbleBacklog = 0
+            return
+        }
+        wakeBubbleBacklog += min(turnSpeed, 25) * 3 * deltaTime
+        let count = Int(wakeBubbleBacklog)
+        wakeBubbleBacklog -= Float(count)
+        let center = body.convert(position: .zero, to: mouthBubbles)
+        for _ in 0..<count {
+            guard let spot = wakeSpots.randomElement() else { return }
+            let local = SIMD3<Float>(
+                Float.random(in: spot.min.x...spot.max.x),
+                Float.random(in: spot.min.y...spot.max.y),
+                Float.random(in: spot.min.z...spot.max.z)
+            ) * 0.7 + spot.center * 0.3
+            let origin = body.convert(position: local, to: mouthBubbles)
+            let outward = origin - center
+            let length = simd_length(outward)
+            mouthBubbleSpheres.emit(
+                count: 1,
+                origin: origin,
+                direction: length > 1e-4 ? outward / length : [0, 1, 0],
+                radiusScale: Float.random(in: 0.1...1) < 0.8 ? Float.random(in: 0.12...0.3) : Float.random(in: 0.4...0.65),
+                speedScale: Float.random(in: 0.12...0.35)
             )
         }
     }

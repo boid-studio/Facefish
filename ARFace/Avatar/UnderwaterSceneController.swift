@@ -347,10 +347,11 @@ final class UnderwaterSceneController {
             for base in materials {
                 guard var material = try? CustomMaterial(
                     from: base,
-                    surfaceShader: .init(named: "faceCausticSurface", in: library)
+                    surfaceShader: .init(named: "faceCausticSurface", in: library),
+                    geometryModifier: .init(named: "faceBodyBend", in: library)
                 ) else { return nil }
-                // Pattern frequency per metre, focus, strength.
-                material.custom.value = [22, 9, strength, 0]
+                // Swim bend (set each frame while swimming), caustic strength, spot glow.
+                material.custom.value = [0, 0, strength, 0]   // swim bend amplitude, phase, caustics, blush
                 result.append(material)
             }
             return result

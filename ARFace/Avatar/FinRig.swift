@@ -61,11 +61,13 @@ final class FinRig {
         /// fish's right) and fore-aft lean (about local X, + toward the front).
         var dorsalSide = [Float](repeating: 0, count: 3)
         var dorsalLean = [Float](repeating: 0, count: 3)
+        /// Side fins over the eyes (fish's left, right), 0...1.
+        var cover: [Float] = [0, 0]
     }
 
     private enum JointMotion {
         case tail(Int)
-        case pectoralFlap(side: Int, index: Int)
+        case pectoralFlap(side: Int, index: Int, root: Bool)
         case dorsal(Int)
     }
 
@@ -88,6 +90,23 @@ final class FinRig {
 
     var finReaction: Float = 1
     var finSway: Float = 1
+    /// Extra turn of the whole fish (radians) on top of the head's, e.g. swimming a lap: the fins
+    /// react to it like to a head turn.
+    var bodyTurn: Float = 0
+    /// Turn and nod speed of the whole fish (rad/s) on top of the head's, e.g. a spin or a loop.
+    var bodyTurnRate: Float = 0
+    var bodyNodRate: Float = 0
+    /// -1...1, a turn the fish is about to make (+ toward its left): the fins steer before the
+    /// body turns. The tail flexes toward it, the outside side fin paddles, the inside one brakes.
+    var steer: Float = 0
+    /// 0...1 per side (fish's left, right): the side fin swings up and folds over the eye, like a
+    /// hand hiding it (a blush). Its usual motion fades out meanwhile.
+    var cover = SIMD2<Float>(repeating: 0)
+    /// 0...1: the fish is swimming under its own power (a lap). The tail beats hard, the side fins
+    /// paddle and tuck back, the dorsal fin folds back.
+    var propulsion: Float = 0
+    /// The swim stroke's phase (radians), shared with the body wave so the bend runs into the tail.
+    private(set) var strokePhase: Float = 0
     var finWave: Float = 1
     var finWaveSpeed: Float = 1
 
@@ -172,16 +191,18 @@ final class FinRig {
         }
 
         let rateAlpha = 1 - exp(-deltaTime * 18)
-        turnRate += ((turn - (lastTurn ?? turn)) / deltaTime - turnRate) * rateAlpha
-        nodRate += ((nod - (lastNod ?? nod)) / deltaTime - nodRate) * rateAlpha
-        lastTurn = turn
+        let totalTurn = turn + bodyTurn
+        turnRate += ((totalTurn - (lastTurn ?? totalTurn)) / deltaTime + bodyTurnRate - turnRate) * rateAlpha
+        nodRate += ((nod - (lastNod ?? nod)) / deltaTime + bodyNodRate - nodRate) * rateAlpha
+        lastTurn = totalTurn
         lastNod = nod
+        strokePhase += deltaTime * 2 * .pi * (1.1 + 2.0 * propulsion)
 
         let energy = 0.6 + 1.2 * min(1, max(0, mouthOpen))
         let steps = max(1, Int((deltaTime / (1.0 / 120)).rounded(.up)))
         let stepTime = deltaTime / Float(steps)
 
-        let tailTarget = min(max(-turnRate * 0.35 * finReaction, -0.8), 0.8)
+        let tailTarget = min(max(-turnRate * 0.35 * finReaction + 0.45 * steer, -0.8), 0.8)
         for _ in 0..<steps {
             var target = tailTarget
             for index in tailSprings.indices {
@@ -194,6 +215,7 @@ final class FinRig {
         for index in tailSprings.indices {
             pose.tail[index] = tailSprings[index].angle
                 + 0.1 * finSway * energy * sin(4.2 * time - 0.9 * Float(index))
+                + 0.57 * propulsion * sin(strokePhase - 1.1 * Float(index) - 2.2)   // the swim stroke
         }
 
         let flapTarget = min(max(nodRate * 0.3 * finReaction, -0.6), 0.6)
@@ -213,12 +235,18 @@ final class FinRig {
             }
 
             let phase: Float = sideIndex == 0 ? 0 : 0.5
+            pose.cover[sideIndex] = min(max(sideIndex == 0 ? cover.x : cover.y, 0), 1)
+            let free = 1 - 0.85 * pose.cover[sideIndex]
+            let outside = max(0, -side * steer), inside = max(0, side * steer)
             for index in 0..<2 {
                 let waveAngle = 5.6 * time + phase - 0.7 * Float(index)
-                pose.pectoralFlap[sideIndex][index] = flapSprings[sideIndex][index].angle
+                pose.pectoralFlap[sideIndex][index] = free * (flapSprings[sideIndex][index].angle
                     + 0.14 * finSway * energy * sin(waveAngle)
-                pose.pectoralSweep[sideIndex][index] = sweepSprings[sideIndex][index].angle
+                    + (0.22 * propulsion + 0.4 * outside) * sin(0.5 * strokePhase + phase * 6 - 0.7 * Float(index)))   // paddling
+                pose.pectoralSweep[sideIndex][index] = free * (sweepSprings[sideIndex][index].angle
                     - side * 0.08 * finSway * energy * sin(waveAngle + 1.2)
+                    + side * 0.35 * propulsion   // tucked back while swimming
+                    - side * 0.5 * inside)       // flared to brake on the inside of a turn
             }
         }
 
@@ -240,7 +268,7 @@ final class FinRig {
         for index in 0..<3 {
             pose.dorsalSide[index] = dorsalSideSprings[index].angle
                 + 0.06 * finSway * energy * sin(3.2 * time - 0.8 * Float(index) + 0.5)
-            pose.dorsalLean[index] = dorsalLeanSprings[index].angle
+            pose.dorsalLean[index] = dorsalLeanSprings[index].angle - 0.25 * propulsion   // folded back
         }
 
         apply(pose)
@@ -267,10 +295,10 @@ final class FinRig {
                 case "tail1": motion = .tail(0)
                 case "tail2": motion = .tail(1)
                 case "tail3": motion = .tail(2)
-                case "pecl0", "pecl1": motion = .pectoralFlap(side: 0, index: 0)
-                case "pecl2": motion = .pectoralFlap(side: 0, index: 1)
-                case "pecr0", "pecr1": motion = .pectoralFlap(side: 1, index: 0)
-                case "pecr2": motion = .pectoralFlap(side: 1, index: 1)
+                case "pecl0", "pecl1": motion = .pectoralFlap(side: 0, index: 0, root: normalized == "pecl0")
+                case "pecl2": motion = .pectoralFlap(side: 0, index: 1, root: false)
+                case "pecr0", "pecr1": motion = .pectoralFlap(side: 1, index: 0, root: normalized == "pecr0")
+                case "pecr2": motion = .pectoralFlap(side: 1, index: 1, root: false)
                 case "dorsal1": motion = .dorsal(0)
                 case "dorsal2": motion = .dorsal(1)
                 case "dorsal3": motion = .dorsal(2)
@@ -297,10 +325,20 @@ final class FinRig {
                 switch joint.motion {
                 case let .tail(index):
                     transform.rotation = transform.rotation * simd_quatf(angle: pose.tail[index], axis: [1, 0, 0])
-                case let .pectoralFlap(side, index):
+                case let .pectoralFlap(side, index, root):
                     transform.rotation = transform.rotation
                         * simd_quatf(angle: pose.pectoralFlap[side][index], axis: [1, 0, 0])
                         * simd_quatf(angle: pose.pectoralSweep[side][index], axis: [0, 0, 1])
+                    // Over the eye: a turn about the fin's root and a move up and forward, in the
+                    // skeleton's space (+Y up, +Z forward, +X the fish's left; the right fin mirrors).
+                    // Partway, the fin lifts out to the side first, so it never cuts through the face.
+                    if root, pose.cover[side] > 0 {
+                        let mirror: Float = side == 0 ? 1 : -1
+                        let axis = simd_normalize(SIMD3<Float>(0.6813, -0.2077 * mirror, 0.7019 * mirror))
+                        transform.rotation = simd_quatf(angle: 153.3 * .pi / 180 * pose.cover[side], axis: axis)
+                            * transform.rotation
+                        transform.translation += SIMD3<Float>(-0.02 * mirror, 0.2, 0.3) * pose.cover[side]
+                    }
                 case let .dorsal(index):
                     transform.rotation = transform.rotation
                         * simd_quatf(angle: pose.dorsalSide[index], axis: [0, 0, 1])

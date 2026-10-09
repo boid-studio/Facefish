@@ -48,6 +48,9 @@ struct ContentView: View {
                     .overlay(alignment: .bottomTrailing) {
                         if isAvatarReady { settingsButton }
                     }
+                    .overlay(alignment: .bottom) {
+                        if isAvatarReady { moveButtons }
+                    }
                     .inspector(isPresented: $avatarSession.showDebug) {
                         DebugInspector(onShowControl: { showBluetooth = true })
                     }
@@ -98,6 +101,30 @@ struct ContentView: View {
         Button("Control", systemImage: "antenna.radiowaves.left.and.right") {
             showBluetooth = true
         }
+    }
+
+    /// Makes the fish swim a lap, spin, loop or blush (later also from the companion).
+    private var moveButtons: some View {
+        HStack(spacing: 16) {
+            moveButton(.lap, systemImage: "point.forward.to.point.capsulepath", label: "Swim a lap")
+            moveButton(.spin, systemImage: "rotate.3d", label: "Spin")
+            moveButton(.loop, systemImage: "arrow.clockwise", label: "Loop")
+            moveButton(.blush, systemImage: "heart", label: "Blush")
+        }
+        .padding(.bottom, 24)
+    }
+
+    private func moveButton(_ move: SwimMove, systemImage: String, label: String) -> some View {
+        Button {
+            avatarSession.pendingMoves.append(move)
+        } label: {
+            Image(systemName: systemImage)
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     private var settingsButton: some View {

@@ -210,9 +210,27 @@ void backdropSurface(realitykit::surface_parameters params) {
 
 // MARK: - Face caustics (the body)
 
+// Swimming: everything behind the gills bends sideways in a wave travelling toward the tail,
+// growing toward the tail stalk; the face and front stay still. Mesh space keeps Blender's axes:
+// +Y runs from the snout (-1.1) to the tail stalk (+0.7), +X is the fish's left.
+// custom_parameter: x = bend amplitude (mesh units at the tail), y = wave phase.
+static float bodyBendWeight(float y) {
+    float w = smoothstep(0.1, 0.72, y);
+    return w * w;
+}
+
+[[visible]]
+void faceBodyBend(realitykit::geometry_parameters params) {
+    float4 custom = params.uniforms().custom_parameter();
+    if (custom.x == 0.0) { return; }
+    float3 p = params.geometry().model_position();
+    float offset = custom.x * bodyBendWeight(p.y) * sin(custom.y - 3.2 * p.y);
+    params.geometry().set_model_position_offset(float3(offset, 0, 0));
+}
+
 // Strong caustics on the fish's body, projected from a fake water surface above and a little in
 // front, so they land on the front-facing face too, not only the top of the head.
-// custom_parameter: x = pattern frequency per metre, y = focus, z = strength, w = unused.
+// custom_parameter: x = swim bend amplitude, y = bend phase (both for faceBodyBend), z = caustic strength, w = blush.
 [[visible]]
 void faceCausticSurface(realitykit::surface_parameters params) {
     constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
@@ -232,14 +250,24 @@ void faceCausticSurface(realitykit::surface_parameters params) {
     // Light falls from above, tilted toward the viewer: project along that direction.
     float2 projected = float2(position.x, position.z - position.y * 0.9);
     float t = params.uniforms().time();
-    half3 light = caustics(projected * custom.x, t * 0.6, custom.y);
-    // A second, larger and slower layer, so the web breathes instead of repeating.
+    half3 light = caustics(projected * 22.0, t * 0.6, 9.0);   // pattern per metre, focus
     light = pow(light, half3(1.7)) * half(1.8);          // thin, bright lines
     float facing = saturate(0.45 + 0.55 * normal.y + 0.25 * normal.z);
     half3 emissive = baseColor * light * half3(0.8, 0.97, 1.0) * half(custom.z * facing);
     baseColor *= half(1.0 - 0.25 * saturate(custom.z));  // a little darker between the lines
 
     emissive += waterScatter(position, tintScale, t);
+
+    // Blush (custom.w, 0...1): rosy cheeks under the eyes. Model space keeps Blender's axes
+    // (+X the fish's left, -Y forward, +Z up); only the front of the face, not the back of the head.
+    if (custom.w > 0.0) {
+        float3 p = params.geometry().model_position();
+        float2 d = float2((abs(p.x) - 0.45) / 0.17, (p.z + 0.3) / 0.12);
+        float cheek = saturate(1.0 - dot(d, d)) * (1.0 - smoothstep(-0.65, -0.45, p.y));
+        half amount = half(custom.w * cheek * cheek * (3.0 - 2.0 * cheek));
+        baseColor = mix(baseColor, baseColor * half3(1.3, 0.5, 0.6), amount * half(0.85));
+        emissive += half3(0.3, 0.03, 0.08) * amount;
+    }
 
     // Shine: the metallic map marks the purple dots; they get a smoother, glossier surface.
     half dots = tex.metallic().sample(s, uv).r;

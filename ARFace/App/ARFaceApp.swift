@@ -31,7 +31,16 @@ final class AvatarSession {
     let avatarDebug = AvatarDebugModel()
     var mirrored = true
     var showDebug = false
+    /// Moves asked for (the buttons, later the companion), taken by the avatar in
+    /// order; asks while a move is running are dropped.
+    var pendingMoves: [SwimMove] = []
     var externalDisplayScene: UIWindowScene?
+}
+
+/// The fish's moves: a lap around the bowl (SwimAround); a quick spin, a vertical loop and a blush
+/// behind its fins (SwimTrick).
+enum SwimMove: CaseIterable {
+    case lap, spin, loop, blush
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
