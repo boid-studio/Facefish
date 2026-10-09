@@ -41,6 +41,7 @@ final class ExternalDisplaySceneDelegate: NSObject, UIWindowSceneDelegate {
 private struct ExternalCanvasView: View {
     @State private var avatarSession = AvatarSession.shared
     @State private var bluetooth = BluetoothControl.shared
+    @State private var isAvatarReady = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -54,6 +55,7 @@ private struct ExternalCanvasView: View {
                     AvatarView(
                         tracker: avatarSession.tracker,
                         mirrored: avatarSession.mirrored,
+                        isReady: $isAvatarReady,
                         showsLoadError: false
                     )
                     .frame(width: side, height: side)
