@@ -237,6 +237,7 @@ final class UnderwaterSceneController {
     private var causticScale: Float = 1
     private var causticSpeed: Float = 1
     private var causticIntensity: Float = 1
+    private var causticAngle: Float = 0
     private var ambientBubblesEnabled = true
     private var spotlightsEnabled = true
     private var shadowsEnabled = true
@@ -274,7 +275,7 @@ final class UnderwaterSceneController {
     func update(deltaTime: TimeInterval, options: AvatarRenderOptions) {
         guard deltaTime.isFinite, deltaTime > 0 else { return }
         setCausticsEnabled(options.causticsEnabled)
-        setCausticTuning(scale: options.causticScale, speed: options.causticSpeed, intensity: options.causticIntensity)
+        setCausticTuning(scale: options.causticScale, speed: options.causticSpeed, intensity: options.causticIntensity, angle: options.causticAngle)
         setAmbientBubblesEnabled(options.ambientBubblesEnabled)
         setSpotlightsEnabled(options.spotlightsEnabled)
         setShadowsEnabled(options.shadowsEnabled)
@@ -366,7 +367,7 @@ final class UnderwaterSceneController {
             }
             return result
         }
-        guard let enabled = make(strength: Self.packedFaceTuning(scale: causticScale, speed: causticSpeed, intensity: causticIntensity)),
+        guard let enabled = make(strength: Self.packedFaceTuning(scale: causticScale, speed: causticSpeed, intensity: causticIntensity, angle: causticAngle)),
               let disabled = make(strength: 0) else {
             logger.error("Face caustic material unavailable; the body keeps its own material.")
             return nil
@@ -498,17 +499,24 @@ final class UnderwaterSceneController {
         ))
     }
 
-    /// Face shader packs frequency, speed and intensity (steps of 0.05) into one float: (f * 100 + s) * 100 + i.
-    private static func packedFaceTuning(scale: Float, speed: Float, intensity: Float) -> Float {
-        (Float((20 / scale).rounded()) * 100 + Float((speed * 20).rounded())) * 100 + Float((intensity * 20).rounded())
+    /// Face shader packs frequency, speed, intensity (steps of 0.05) and angle (steps of 5 degrees) into one
+    /// float, mixed radix: ((f * 81 + s) * 61 + i) * 25 + a. Stays under 2^24 so it is exact.
+    private static func packedFaceTuning(scale: Float, speed: Float, intensity: Float, angle: Float) -> Float {
+        let f = min(max((20 / scale).rounded(), 0), 80)
+        let s = min(max((speed * 20).rounded(), 0), 80)
+        let i = min(max((intensity * 20).rounded(), 0), 60)
+        let a = min(max((angle / 5).rounded(), -12), 12) + 12
+        return ((f * 81 + s) * 61 + i) * 25 + a
     }
 
-    private func setCausticTuning(scale: Float, speed: Float, intensity: Float) {
-        guard scale != causticScale || speed != causticSpeed || intensity != causticIntensity else { return }
+    private func setCausticTuning(scale: Float, speed: Float, intensity: Float, angle: Float) {
+        guard scale != causticScale || speed != causticSpeed || intensity != causticIntensity
+                || angle != causticAngle else { return }
         causticScale = scale
         causticSpeed = speed
         causticIntensity = intensity
-        let packed = Self.packedFaceTuning(scale: scale, speed: speed, intensity: intensity)
+        causticAngle = angle
+        let packed = Self.packedFaceTuning(scale: scale, speed: speed, intensity: intensity, angle: angle)
         func tuned(_ materials: [any Material], kind: CausticKind) -> [any Material] {
             materials.map { base in
                 guard var material = base as? CustomMaterial else { return base }

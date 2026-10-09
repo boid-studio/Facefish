@@ -82,6 +82,12 @@ struct RenderingDebugSection: View {
             }
             Slider(value: $model.causticIntensity, in: 0...3) { Text("Caustic intensity") }
         }
+        VStack(alignment: .leading) {
+            LabeledContent("Caustic angle") {
+                Text("\(model.causticAngle, specifier: "%.0f")°").monospacedDigit()
+            }
+            Slider(value: $model.causticAngle, in: -60...60, step: 5) { Text("Caustic angle") }
+        }
         Toggle("Ambient bubbles", isOn: $model.ambientBubblesEnabled)
         Toggle("Mouth bubbles", isOn: $model.mouthBubblesEnabled)
         Toggle("Audio bubbles", isOn: $model.audioBubblesEnabled)

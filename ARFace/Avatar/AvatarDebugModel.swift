@@ -7,6 +7,7 @@ struct AvatarRenderOptions {
     let causticScale: Float
     let causticSpeed: Float
     let causticIntensity: Float
+    let causticAngle: Float
     let ambientBubblesEnabled: Bool
     let mouthBubblesEnabled: Bool
     let audioBubblesEnabled: Bool
@@ -62,6 +63,8 @@ final class AvatarDebugModel {
     var causticScale: Float = 1
     var causticSpeed: Float = 1
     var causticIntensity: Float = 1
+    /// Degrees from straight down; positive tilts the light toward the viewer (body only).
+    var causticAngle: Float = 0
     var ambientBubblesEnabled = true
     var mouthBubblesEnabled = true
     var audioBubblesEnabled = true
@@ -80,6 +83,7 @@ final class AvatarDebugModel {
             causticScale: causticScale,
             causticSpeed: causticSpeed,
             causticIntensity: causticIntensity,
+            causticAngle: causticAngle,
             ambientBubblesEnabled: ambientBubblesEnabled,
             mouthBubblesEnabled: mouthBubblesEnabled,
             audioBubblesEnabled: audioBubblesEnabled,
