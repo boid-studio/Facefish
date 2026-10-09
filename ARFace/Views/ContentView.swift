@@ -11,7 +11,7 @@ struct ContentView: View {
     var body: some View {
         Group {
             if bluetooth.isControlMode {
-                BluetoothControlView()
+                ControlTabView()
             } else if tracker.isSupported {
                 Group {
                     if avatarSession.externalDisplayScene != nil {
@@ -39,6 +39,9 @@ struct ContentView: View {
                     .ignoresSafeArea()
                     .overlay(alignment: .top) {
                         if isAvatarReady { TrackingStatusBanner(tracker: tracker) }
+                    }
+                    .overlay(alignment: .bottom) {
+                        if isAvatarReady { CenterFaceBanner().padding(.bottom, 32) }
                     }
                     .overlay(alignment: .topTrailing) {
                         if isAvatarReady, avatarSession.showDebug {

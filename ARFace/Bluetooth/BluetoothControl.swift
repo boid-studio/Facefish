@@ -18,15 +18,61 @@ enum ControlCommand: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// A setting value pushed from the control app to the main app.
+enum RemoteSetting: Codable, Equatable {
+    case centerFace
+    case mirror(Bool)
+    case faceCalibration(Bool)
+    case lipSeal(Float)
+    case puckerPriority(Float)
+    case cameraZ(Float)
+
+    /// Settings with the same key replace each other while queued.
+    var key: String {
+        switch self {
+        case .centerFace: "centerFace"
+        case .mirror: "mirror"
+        case .faceCalibration: "faceCalibration"
+        case .lipSeal: "lipSeal"
+        case .puckerPriority: "puckerPriority"
+        case .cameraZ: "cameraZ"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .centerFace: "Center face"
+        case .mirror(let on): "Mirror \(on ? "on" : "off")"
+        case .faceCalibration(let on): "Face calibration \(on ? "on" : "off")"
+        case .lipSeal(let v): "Lip seal \(String(format: "%.2f", v))"
+        case .puckerPriority(let v): "Pucker priority \(String(format: "%.2f", v))"
+        case .cameraZ(let v): "Camera Z \(String(format: "%.2f", v))"
+        }
+    }
+}
+
+enum ControlPayload {
+    case command(ControlCommand)
+    case setting(RemoteSetting)
+
+    var title: String {
+        switch self {
+        case .command(let c): c.title
+        case .setting(let s): s.title
+        }
+    }
+}
+
 struct ReceivedControlCommand: Identifiable {
     let id = UUID()
     let date = Date()
-    let command: ControlCommand
+    let payload: ControlPayload
 }
 
 private struct ControlMessage: Codable {
     let version: Int
-    let command: ControlCommand
+    var command: ControlCommand?
+    var setting: RemoteSetting?
 }
 
 @Observable
@@ -46,6 +92,7 @@ final class BluetoothControl: NSObject {
     private(set) var devices: [CBPeripheral] = []
     private(set) var receivedCommands: [ReceivedControlCommand] = []
     var onCommand: ((ControlCommand) -> Void)?
+    var onSetting: ((RemoteSetting) -> Void)?
 
     @ObservationIgnored private var centralManager: CBCentralManager?
     @ObservationIgnored private var peripheralManager: CBPeripheralManager?
@@ -54,7 +101,10 @@ final class BluetoothControl: NSObject {
     @ObservationIgnored private var hostedCharacteristic: CBMutableCharacteristic?
     @ObservationIgnored private var authorizedCentral: UUID?
     @ObservationIgnored private var connectionTimeout: Timer?
-    @ObservationIgnored private var pendingCommand: ControlCommand?
+    @ObservationIgnored private var pendingCommand: ControlPayload?
+    /// Settings waiting for the in-flight write to finish; only the latest value per key is kept.
+    @ObservationIgnored private var queuedSettings: [RemoteSetting] = []
+    @ObservationIgnored private var pendingCompletion: ((Bool) -> Void)?
 
     func setControlMode(_ enabled: Bool) {
         guard enabled != isControlMode else { return }
@@ -97,15 +147,45 @@ final class BluetoothControl: NSObject {
     }
 
     func send(_ command: ControlCommand) {
+        guard !isSending else { return }
+        write(.command(command))
+    }
+
+    /// Sends a setting, coalescing rapid changes (e.g. slider drags) while a write is in flight.
+    /// `completion` reports whether the main app acknowledged the write; it is not
+    /// called if the setting is coalesced with a later value.
+    func send(_ setting: RemoteSetting, completion: ((Bool) -> Void)? = nil) {
+        guard isControlMode, isConnected else {
+            completion?(false)
+            return
+        }
+        if isSending {
+            queuedSettings.removeAll { $0.key == setting.key }
+            queuedSettings.append(setting)
+        } else {
+            write(.setting(setting), completion: completion)
+        }
+    }
+
+    private func write(_ payload: ControlPayload, completion: ((Bool) -> Void)? = nil) {
         guard isControlMode, isConnected, !isSending,
-              let peer, let commandCharacteristic else { return }
+              let peer, let commandCharacteristic else {
+            completion?(false)
+            return
+        }
+        var message = ControlMessage(version: 1)
+        switch payload {
+        case .command(let c): message.command = c
+        case .setting(let s): message.setting = s
+        }
         do {
-            let data = try JSONEncoder().encode(ControlMessage(version: 1, command: command))
+            let data = try JSONEncoder().encode(message)
             guard data.count <= peer.maximumWriteValueLength(for: .withResponse) else {
                 status = "Command is too large for this connection."
                 return
             }
-            pendingCommand = command
+            pendingCommand = payload
+            pendingCompletion = completion
             isSending = true
             peer.writeValue(data, for: commandCharacteristic, type: .withResponse)
         } catch {
@@ -132,6 +212,10 @@ final class BluetoothControl: NSObject {
         peer = nil
         commandCharacteristic = nil
         pendingCommand = nil
+        queuedSettings = []
+        let completion = pendingCompletion
+        pendingCompletion = nil
+        completion?(false)
         peripheralManager?.stopAdvertising()
         peripheralManager?.removeAllServices()
         hostedCharacteristic = nil
@@ -314,6 +398,12 @@ extension BluetoothControl: @preconcurrency CBPeripheralDelegate {
             ? "\(pendingCommand?.title ?? "Command") delivered."
             : "Command was not delivered. Try again."
         pendingCommand = nil
+        let completion = pendingCompletion
+        pendingCompletion = nil
+        completion?(error == nil)
+        if !queuedSettings.isEmpty {
+            write(.setting(queuedSettings.removeFirst()))
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
@@ -423,9 +513,19 @@ extension BluetoothControl: @preconcurrency CBPeripheralManagerDelegate {
             peripheral.respond(to: request, withResult: .unlikelyError)
             return
         }
-        receivedCommands.insert(ReceivedControlCommand(command: message.command), at: 0)
+        let payload: ControlPayload
+        if let command = message.command {
+            payload = .command(command)
+            onCommand?(command)
+        } else if let setting = message.setting {
+            payload = .setting(setting)
+            onSetting?(setting)
+        } else {
+            peripheral.respond(to: request, withResult: .unlikelyError)
+            return
+        }
+        receivedCommands.insert(ReceivedControlCommand(payload: payload), at: 0)
         if receivedCommands.count > 100 { receivedCommands.removeLast() }
-        onCommand?(message.command)
         peripheral.respond(to: request, withResult: .success)
     }
 }
