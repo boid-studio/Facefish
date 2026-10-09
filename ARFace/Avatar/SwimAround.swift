@@ -129,8 +129,17 @@ struct SwimAround {
         let i = min(Int(x), segments - 1)
         let t = x - Float(i)
         let p0 = path[max(i - 1, 0)], p1 = path[i], p2 = path[i + 1], p3 = path[min(i + 2, segments)]
-        let t2 = t * t, t3 = t2 * t
-        return 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3)
+        return SIMD3(
+            Self.catmullRom(p0.x, p1.x, p2.x, p3.x, at: t),
+            Self.catmullRom(p0.y, p1.y, p2.y, p3.y, at: t),
+            Self.catmullRom(p0.z, p1.z, p2.z, p3.z, at: t)
+        )
+    }
+
+    private static func catmullRom(_ p0: Float, _ p1: Float, _ p2: Float, _ p3: Float, at t: Float) -> Float {
+        let t2 = t * t
+        let t3 = t2 * t
+        return 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3)
     }
 
     private static func smoothstep(_ x: Float) -> Float { x * x * (3 - 2 * x) }

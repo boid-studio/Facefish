@@ -76,12 +76,8 @@ static void causticSurfaceImpl(realitykit::surface_parameters params, float4 cus
     emissive += waterScatter(position, tintScale, params.uniforms().time());
     float3 normal = normalize(params.geometry().normal());
     float facing = saturate(normal.y * 0.7 + 0.3);
-    half3 light = caustics(position.xz * custom.x, params.uniforms().time() * 0.5, custom.y);
+    half3 light = caustics(position.xz * custom.x, params.uniforms().time() * 0.5 * custom.w, custom.y);
     emissive += baseColor * light * half3(0.75, 0.95, 1.0) * half(custom.z * facing);
-
-    float fog = saturate((-position.z - 0.2) / 1.3) * custom.w;
-    baseColor *= half(1.0 - fog);
-    emissive = mix(emissive, waterColor(position.y), half(fog));
 
     auto surface = params.surface();
     surface.set_base_color(baseColor);
@@ -96,7 +92,7 @@ static void causticSurfaceImpl(realitykit::surface_parameters params, float4 cus
                         * tex.base_color().sample(s, uv).a);
 }
 
-// custom_parameter: x = pattern frequency per metre, y = focus, z = strength, w = distance fog amount.
+// custom_parameter: x = pattern frequency per metre, y = focus, z = strength, w = animation speed.
 [[visible]]
 void causticSurface(realitykit::surface_parameters params) {
     causticSurfaceImpl(params, params.uniforms().custom_parameter());
@@ -105,7 +101,7 @@ void causticSurface(realitykit::surface_parameters params) {
 // Fin geometry uses the custom parameter for its ripple, so keep the caustic tuning fixed here.
 [[visible]]
 void causticFinSurface(realitykit::surface_parameters params) {
-    causticSurfaceImpl(params, float4(32.0, 6.0, 1.4, 0.0));
+    causticSurfaceImpl(params, float4(32.0, 6.0, 1.4, 1.0));
 }
 
 // Lightweight PBR passthrough used while caustics are disabled. Keeping a CustomMaterial on
@@ -230,7 +226,8 @@ void faceBodyBend(realitykit::geometry_parameters params) {
 
 // Strong caustics on the fish's body, projected from a fake water surface above and a little in
 // front, so they land on the front-facing face too, not only the top of the head.
-// custom_parameter: x = swim bend amplitude, y = bend phase (both for faceBodyBend), z = caustic strength, w = blush.
+// custom_parameter: x = swim bend amplitude, y = bend phase (both for faceBodyBend), w = blush,
+// z = 0 for no caustics, else packed frequency, speed and intensity (see UnderwaterSceneController).
 [[visible]]
 void faceCausticSurface(realitykit::surface_parameters params) {
     constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
@@ -250,11 +247,17 @@ void faceCausticSurface(realitykit::surface_parameters params) {
     // Light falls from above, tilted toward the viewer: project along that direction.
     float2 projected = float2(position.x, position.z - position.y * 0.9);
     float t = params.uniforms().time();
-    half3 light = caustics(projected * 22.0, t * 0.6, 9.0);   // pattern per metre, focus
+    float tuning = custom.z;
+    float freqStep = floor(tuning / 10000.0);
+    float speedStep = floor((tuning - freqStep * 10000.0) / 100.0);
+    float scale = freqStep * 0.05;
+    float speed = speedStep * 0.05;
+    float strength = tuning > 0.0 ? 4.5 * (tuning - freqStep * 10000.0 - speedStep * 100.0) * 0.05 : 0.0;
+    half3 light = caustics(projected * 22.0 * scale, t * 0.6 * speed, 9.0);   // pattern per metre, focus
     light = pow(light, half3(1.7)) * half(1.8);          // thin, bright lines
     float facing = saturate(0.45 + 0.55 * normal.y + 0.25 * normal.z);
-    half3 emissive = baseColor * light * half3(0.8, 0.97, 1.0) * half(custom.z * facing);
-    baseColor *= half(1.0 - 0.25 * saturate(custom.z));  // a little darker between the lines
+    half3 emissive = baseColor * light * half3(0.8, 0.97, 1.0) * half(strength * facing);
+    baseColor *= half(1.0 - 0.25 * saturate(strength));  // a little darker between the lines
 
     emissive += waterScatter(position, tintScale, t);
 

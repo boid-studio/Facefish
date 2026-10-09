@@ -134,10 +134,6 @@ final class AvatarController {
         var unmatched: [String] = []
         bind(model, unmatched: &unmatched)
         boundLocations = Set(targets.flatMap { $0.bindings.map(\.location) })
-        logger.info("Bound \(self.boundLocations.count)/52 ARKit blend shapes across \(self.targets.count) mesh(es).")
-        if !unmatched.isEmpty {
-            logger.info("Unmatched model shapes: \(unmatched.joined(separator: ", "))")
-        }
 
         if let head = model.findEntity(named: "Head") {
             let bubbles = Entity()

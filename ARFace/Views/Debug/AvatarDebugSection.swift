@@ -64,6 +64,24 @@ struct RenderingDebugSection: View {
         }
 
         Toggle("Caustic shaders", isOn: $model.causticsEnabled)
+        VStack(alignment: .leading) {
+            LabeledContent("Caustic size") {
+                Text("\(model.causticScale, specifier: "%.2f")x").monospacedDigit()
+            }
+            Slider(value: $model.causticScale, in: 0.25...4) { Text("Caustic size") }
+        }
+        VStack(alignment: .leading) {
+            LabeledContent("Caustic speed") {
+                Text("\(model.causticSpeed, specifier: "%.2f")x").monospacedDigit()
+            }
+            Slider(value: $model.causticSpeed, in: 0.1...4) { Text("Caustic speed") }
+        }
+        VStack(alignment: .leading) {
+            LabeledContent("Caustic intensity") {
+                Text("\(model.causticIntensity, specifier: "%.2f")x").monospacedDigit()
+            }
+            Slider(value: $model.causticIntensity, in: 0...3) { Text("Caustic intensity") }
+        }
         Toggle("Ambient bubbles", isOn: $model.ambientBubblesEnabled)
         Toggle("Mouth bubbles", isOn: $model.mouthBubblesEnabled)
         Toggle("Audio bubbles", isOn: $model.audioBubblesEnabled)

@@ -4,6 +4,9 @@ import RealityKit
 
 struct AvatarRenderOptions {
     let causticsEnabled: Bool
+    let causticScale: Float
+    let causticSpeed: Float
+    let causticIntensity: Float
     let ambientBubblesEnabled: Bool
     let mouthBubblesEnabled: Bool
     let audioBubblesEnabled: Bool
@@ -55,6 +58,10 @@ final class AvatarDebugModel {
     /// 0 = natural, 1 = big stage acting (AvatarController; set from the control app too).
     var acting: Float = 0
     var causticsEnabled = true
+    /// Multipliers on the caustic pattern size and animation speed (1 = default).
+    var causticScale: Float = 1
+    var causticSpeed: Float = 1
+    var causticIntensity: Float = 1
     var ambientBubblesEnabled = true
     var mouthBubblesEnabled = true
     var audioBubblesEnabled = true
@@ -70,6 +77,9 @@ final class AvatarDebugModel {
     var renderOptions: AvatarRenderOptions {
         AvatarRenderOptions(
             causticsEnabled: causticsEnabled,
+            causticScale: causticScale,
+            causticSpeed: causticSpeed,
+            causticIntensity: causticIntensity,
             ambientBubblesEnabled: ambientBubblesEnabled,
             mouthBubblesEnabled: mouthBubblesEnabled,
             audioBubblesEnabled: audioBubblesEnabled,
@@ -116,9 +126,6 @@ final class AvatarDebugModel {
         guard sampledDuration >= 0.5 else { return }
 
         framesPerSecond = Double(sampledFrameCount) / sampledDuration
-        if ProcessInfo.processInfo.arguments.contains("-logFPS") {
-            print("[fps] \(String(format: "%.1f", framesPerSecond)) worst \(String(format: "%.1f", sampledWorstFrame * 1000))ms")
-        }
         sampledFrameCount = 0
         sampledDuration = 0
         sampledWorstFrame = 0
