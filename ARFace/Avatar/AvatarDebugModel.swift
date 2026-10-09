@@ -52,6 +52,8 @@ final class AvatarDebugModel {
     var laughReadout = LaughReadout()
 
     var cameraZ: Float = 0.75
+    /// 0 = natural, 1 = big stage acting (AvatarController; set from the control app too).
+    var acting: Float = 0
     var causticsEnabled = true
     var ambientBubblesEnabled = true
     var mouthBubblesEnabled = true

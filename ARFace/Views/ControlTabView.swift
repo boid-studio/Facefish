@@ -30,6 +30,7 @@ struct RemoteSettingsView: View {
     @AppStorage("remote.lipSeal") private var lipSeal = 0.75
     @AppStorage("remote.puckerPriority") private var puckerPriority = 1.0
     @AppStorage("remote.cameraZ") private var cameraZ = 0.75
+    @AppStorage("remote.acting") private var acting = 0.0
     @State private var centerFace = CenterFaceState.idle
 
     private enum CenterFaceState: Equatable {
@@ -57,6 +58,13 @@ struct RemoteSettingsView: View {
                     Text("Tracking")
                 } footer: {
                     Text("Center face records the performer's relaxed face for 1.5 s on the main app.")
+                }
+                Section {
+                    slider("Acting", value: $acting, in: 0...1) { .acting(Float($0)) }
+                } header: {
+                    Text("Performance")
+                } footer: {
+                    Text("0 follows the face as it is. Higher plays it bigger: stronger expressions and head moves, harder fins, and big notes that open the fins wide.")
                 }
                 Section("Rendering") {
                     slider("Camera Z", value: $cameraZ, in: 0.1...3, unit: " m") { .cameraZ(Float($0)) }
@@ -157,6 +165,7 @@ struct RemoteSettingsView: View {
         bluetooth.send(.lipSeal(Float(lipSeal)))
         bluetooth.send(.puckerPriority(Float(puckerPriority)))
         bluetooth.send(.cameraZ(Float(cameraZ)))
+        bluetooth.send(.acting(Float(acting)))
     }
 }
 
@@ -176,6 +185,7 @@ struct ControlActionsView: View {
         Action(title: "Spin", systemImage: "rotate.3d", command: .spin),
         Action(title: "Loop", systemImage: "arrow.clockwise", command: .loop),
         Action(title: "Blush", systemImage: "heart", command: .blush),
+        Action(title: "Blow bubbles", systemImage: "bubbles.and.sparkles", command: .blowBubbles),
     ]
 
     var body: some View {

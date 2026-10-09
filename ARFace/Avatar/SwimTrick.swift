@@ -2,13 +2,13 @@ import Foundation
 import simd
 
 /// The fish's quick moves, short enough for the middle of a sentence: a spin on the spot with a
-/// hop, a vertical loop, and a blush behind its fins. They are layered on the live (tracked) pose, so the face keeps going,
+/// hop, a vertical loop, a blush behind its fins, and blowing a stream of bubbles. They are layered on the live (tracked) pose, so the face keeps going,
 /// and each one ends exactly where it began.
 ///
 /// Like a real fish, it works the fins first (a wind-up against the move), then the body goes.
 /// Works in the fish's own frame: +Z forward (toward the camera at rest), +Y up, +X its left.
 struct SwimTrick {
-    enum Kind { case spin, loop, blush }
+    enum Kind { case spin, loop, blush, bubbles }
 
     /// What the move contributes this frame.
     struct Pose {
@@ -29,6 +29,11 @@ struct SwimTrick {
         var cover = SIMD2<Float>(repeating: 0)
         /// Rosy cheeks, 0...1.
         var blush: Float = 0
+        /// The mouth taken over (0...1) for puffed cheeks and puckered lips, and bubbles per second.
+        var mouthTakeover: Float = 0
+        var cheekPuff: Float = 0
+        var pucker: Float = 0
+        var bubbles: Float = 0
     }
 
     let kind: Kind
@@ -47,6 +52,7 @@ struct SwimTrick {
         case .spin: duration = Float.random(in: 1.0...1.2)
         case .loop: duration = Float.random(in: 1.3...1.5)
         case .blush: duration = 3.0
+        case .bubbles: duration = BubbleBlow.duration
         }
     }
 
@@ -58,6 +64,7 @@ struct SwimTrick {
         case .spin: return spin(u, deltaTime: deltaTime)
         case .loop: return loop(u)
         case .blush: return blush(elapsed)
+        case .bubbles: return blowBubbles(elapsed)
         }
     }
 
@@ -139,6 +146,27 @@ struct SwimTrick {
             bend: 0.02 * shy,
             cover: cover,
             blush: rosy
+        )
+    }
+
+    /// Turns toward a bottom corner (on the `direction` side), puffs the cheeks and blows a stream
+    /// of bubbles through puckered lips (BubbleBlow). `t` is seconds.
+    private func blowBubbles(_ t: Float) -> Pose {
+        let blow = BubbleBlow.at(t)
+        let yaw = direction * BubbleBlow.cornerYaw * blow.corner
+        let pitch = BubbleBlow.cornerPitch * blow.corner
+        return Pose(
+            rotation: simd_quatf(angle: yaw, axis: [0, 1, 0])
+                * simd_quatf(angle: pitch, axis: [1, 0, 0])
+                * simd_quatf(angle: direction * BubbleBlow.cornerRoll * blow.corner, axis: [0, 0, 1]),
+            offset: .zero,
+            yaw: yaw, pitch: pitch, effort: 0.1 * blow.corner,
+            steer: 0,
+            bend: 0,
+            mouthTakeover: Self.smoothstep(Self.ramp(t, 0, 0.15)) * (1 - Self.smoothstep(Self.ramp(t, 2.5, 2.9))),
+            cheekPuff: blow.cheekPuff,
+            pucker: blow.pucker,
+            bubbles: blow.bubbles
         )
     }
 

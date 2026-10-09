@@ -19,6 +19,7 @@ struct ARFaceApp: App {
                         case .spin: AvatarSession.shared.pendingMoves.append(.spin)
                         case .loop: AvatarSession.shared.pendingMoves.append(.loop)
                         case .blush: AvatarSession.shared.pendingMoves.append(.blush)
+                        case .blowBubbles: AvatarSession.shared.pendingMoves.append(.bubbles)
                         }
                     }
                     BluetoothControl.shared.onSetting = { setting in
@@ -30,6 +31,7 @@ struct ARFaceApp: App {
                         case .lipSeal(let v): calibration.lipSeal = min(max(v, 0), 1)
                         case .puckerPriority(let v): calibration.puckerPriority = min(max(v, 0), 1)
                         case .cameraZ(let v): AvatarSession.shared.avatarDebug.cameraZ = min(max(v, 0.1), 3)
+                        case .acting(let v): AvatarSession.shared.avatarDebug.acting = min(max(v, 0), 1)
                         }
                     }
                 }
@@ -52,10 +54,10 @@ final class AvatarSession {
     var externalDisplayScene: UIWindowScene?
 }
 
-/// The fish's moves: a lap around the bowl (SwimAround); a quick spin, a vertical loop and a blush
-/// behind its fins (SwimTrick).
+/// The fish's moves: a lap around the bowl (SwimAround); a quick spin, a vertical loop, a blush
+/// behind its fins and blowing bubbles (SwimTrick).
 enum SwimMove: CaseIterable {
-    case lap, spin, loop, blush
+    case lap, spin, loop, blush, bubbles
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {

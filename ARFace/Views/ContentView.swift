@@ -113,6 +113,7 @@ struct ContentView: View {
             moveButton(.spin, systemImage: "rotate.3d", label: "Spin")
             moveButton(.loop, systemImage: "arrow.clockwise", label: "Loop")
             moveButton(.blush, systemImage: "heart", label: "Blush")
+            moveButton(.bubbles, systemImage: "bubbles.and.sparkles", label: "Blow bubbles")
         }
         .padding(.bottom, 24)
     }

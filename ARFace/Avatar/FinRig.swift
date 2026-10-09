@@ -104,6 +104,8 @@ final class FinRig {
     var cover = SIMD2<Float>(repeating: 0)
     /// -1...1: both side fins flap together (a laugh's "ha"s).
     var clap: Float = 0
+    /// 0...1: the side fins open wide like arms and the dorsal fin stands up (singing a big note).
+    var spread: Float = 0
     /// 0...1: the fish is swimming under its own power (a lap). The tail beats hard, the side fins
     /// paddle and tuck back, the dorsal fin folds back.
     var propulsion: Float = 0
@@ -263,12 +265,14 @@ final class FinRig {
                 let waveAngle = 5.6 * time + phase - 0.7 * Float(index)
                 pose.pectoralFlap[sideIndex][index] = free * (flapSprings[sideIndex][index].angle
                     + 0.45 * clap
+                    + 0.35 * spread
                     + 0.14 * finSway * energy * sin(waveAngle)
                     + (0.22 * propulsion + 0.4 * outside) * sin(0.5 * strokePhase + phase * 6 - 0.7 * Float(index)))   // paddling
                 pose.pectoralSweep[sideIndex][index] = free * (sweepSprings[sideIndex][index].angle
                     - side * 0.08 * finSway * energy * sin(waveAngle + 1.2)
                     + side * 0.35 * propulsion   // tucked back while swimming
-                    - side * 0.5 * inside)       // flared to brake on the inside of a turn
+                    - side * 0.5 * inside        // flared to brake on the inside of a turn
+                    - side * 0.6 * spread)       // opened wide
             }
         }
 
@@ -291,6 +295,7 @@ final class FinRig {
             pose.dorsalSide[index] = dorsalSideSprings[index].angle
                 + 0.06 * finSway * energy * sin(3.2 * time - 0.8 * Float(index) + 0.5)
             pose.dorsalLean[index] = dorsalLeanSprings[index].angle - 0.25 * propulsion   // folded back
+                + 0.2 * spread                                                                // standing up
         }
 
         apply(pose)

@@ -84,27 +84,63 @@ struct IdleLife {
         }
         var corner: Float = 0
         if let start = blowStart {
-            let b = time - start
-            corner = Self.smoothstep(Self.ramp(b, 0, 0.6)) * (1 - Self.smoothstep(Self.ramp(b, 2.6, 3.3)))
-            frame.cheekPuff = Self.smoothstep(Self.ramp(b, 0.15, 0.7)) * (1 - Self.smoothstep(Self.ramp(b, 1.1, 2.2)))
-            frame.pucker = 0.9 * Self.smoothstep(Self.ramp(b, 0.9, 1.1)) * (1 - Self.smoothstep(Self.ramp(b, 2.3, 2.6)))
-            frame.bubbles = b > 1.05 && b < 2.3 ? 10 + 30 * (1 - Self.ramp(b, 1.05, 2.3)) : 0
-            if b > 3.3 {
+            let blow = BubbleBlow.at(time - start)
+            corner = blow.corner
+            frame.cheekPuff = blow.cheekPuff
+            frame.pucker = blow.pucker
+            frame.bubbles = blow.bubbles
+            if time - start > BubbleBlow.duration {
                 blowStart = nil
                 nextBlow = time + Float.random(in: 4...8)
             }
         }
 
         // The head: looking around, or turned to the corner (the eyes follow the bubbles).
-        let cornerTurn = SIMD2<Float>(0.45 * blowSide, 0.3)
+        let cornerTurn = SIMD2<Float>(BubbleBlow.cornerYaw * blowSide, BubbleBlow.cornerPitch)
         let headTurn = head * (1 - corner) + cornerTurn * corner
         let eyes = (gaze - head) * (1 - corner) + SIMD2(0.1 * blowSide, 0.15) * corner
         frame.yaw = headTurn.x
         frame.pitch = headTurn.y
-        frame.roll = -0.1 * blowSide * corner
+        frame.roll = BubbleBlow.cornerRoll * blowSide * corner
         frame.eyeYaw = eyes.x
         frame.eyePitch = eyes.y
         return frame
+    }
+
+    private static func ramp(_ x: Float, _ from: Float, _ to: Float) -> Float {
+        min(max((x - from) / (to - from), 0), 1)
+    }
+
+    private static func smoothstep(_ x: Float) -> Float { x * x * (3 - 2 * x) }
+}
+
+/// Blowing a stream of bubbles: turn toward one of the bottom corners and fill the cheeks, then
+/// pucker and let the air out as a stream of bubbles, then turn back. Used by the waiting fish
+/// (IdleLife) and by the "blow bubbles" move (SwimTrick).
+enum BubbleBlow {
+    static let duration: Float = 3.3
+    /// The turn toward the corner (radians, times the side: +1 screen right, -1 left).
+    static let cornerYaw: Float = 0.45
+    static let cornerPitch: Float = 0.3
+    static let cornerRoll: Float = -0.1
+
+    struct Frame {
+        /// 0...1, turned toward the corner.
+        var corner: Float
+        var cheekPuff: Float
+        var pucker: Float
+        /// Bubbles per second out of the mouth.
+        var bubbles: Float
+    }
+
+    /// The blow `b` seconds in.
+    static func at(_ b: Float) -> Frame {
+        Frame(
+            corner: smoothstep(ramp(b, 0, 0.6)) * (1 - smoothstep(ramp(b, 2.6, duration))),
+            cheekPuff: smoothstep(ramp(b, 0.15, 0.7)) * (1 - smoothstep(ramp(b, 1.1, 2.2))),
+            pucker: 0.9 * smoothstep(ramp(b, 0.9, 1.1)) * (1 - smoothstep(ramp(b, 2.3, 2.6))),
+            bubbles: b > 1.05 && b < 2.3 ? 10 + 30 * (1 - ramp(b, 1.05, 2.3)) : 0
+        )
     }
 
     private static func ramp(_ x: Float, _ from: Float, _ to: Float) -> Float {

@@ -46,6 +46,17 @@ final class AvatarController {
     private var laugh = LaughDetector()
     private var lastLaughPulse: Float = 0
     private var laughReadoutTime: Float = 0
+    /// This frame's laugh (0...1), for the face.
+    private var laughing: Float = 0
+    /// Singing a big note (loud voice, open mouth), 0...1, and the vibrato's clock.
+    private var bigNoteLevel: Float = 0
+    private var bigNote: Float = 0
+    private var vibratoTime: Float = 0
+    private var lastMouthOpen: Float = 0
+    /// A move taking over the mouth (blowing bubbles), from the last frame's move.
+    private var moveFace: (takeover: Float, cheekPuff: Float, pucker: Float, bubbles: Float) = (0, 0, 0, 0)
+    /// 0 = natural, 1 = big stage acting (AvatarDebugModel.acting, also set from the control app).
+    private var acting: Float { AvatarSession.shared.avatarDebug.acting }
     /// A lap around the bowl (SwimAround.swift) and the quick moves (SwimTrick.swift).
     private var swimAround = SwimAround()
     private var activeTrick: SwimTrick?
@@ -226,20 +237,29 @@ final class AvatarController {
         idleYaw = idle.yaw * idleWeight
 
         // Without tracking, the last tracked pose stays as the "live" end of the blend while it fades out.
+        // Acting bigger turns the head further than the performer does.
+        let headGain = 1 + 0.8 * acting
         root.orientation = smoothedRotation.map {
-            simd_slerp(idleRotation, $0, presence)
+            simd_slerp(idleRotation, Self.amplified($0, by: headGain), presence)
         } ?? idleRotation
 
         // Laughing: the fish laughs bigger (see laughed(_:_:)), in time with each "ha".
-        laugh.update(weights: isTracked ? lastBlendShapes : nil, voice: audio.overall, deltaTime: Float(min(deltaTime, 0.1)))
-        let laughing = laugh.intensity * presence
-        publishLaughReadout(deltaTime: Float(min(deltaTime, 0.1)))
+        let frameDelta = Float(min(deltaTime, 0.1))
+        laugh.update(weights: isTracked ? lastBlendShapes : nil, voice: audio.overall, deltaTime: frameDelta)
+        laughing = laugh.intensity * presence
+
+        // Singing a big note: a loud voice through an open mouth. Played bigger with Acting.
+        let note = isTracked ? Self.smoothstep(0.35, 0.7, audio.overall) * Self.smoothstep(0.15, 0.4, lastMouthOpen) : 0
+        bigNoteLevel += (note - bigNoteLevel) * (1 - exp(-frameDelta / (note > bigNoteLevel ? 0.25 : 0.5)))
+        bigNote = bigNoteLevel * presence * (0.3 + 0.7 * acting)
+        vibratoTime += frameDelta
+        publishLaughReadout(deltaTime: frameDelta)
 
         let eyeRange = eyeRig.range
         if let blendShapes = lastBlendShapes {
             let mirrored = self.mirrored
             let weight: (ARFaceAnchor.BlendShapeLocation) -> Float = { [self] location in
-                laughed(location, (blendShapes[mirrored ? BlendShapeMapping.mirrored(location) : location] ?? 0) * presence, laughing)
+                played(location, (blendShapes[mirrored ? BlendShapeMapping.mirrored(location) : location] ?? 0) * presence)
                     + idle.weight(location, eyeRange: eyeRange) * idleWeight
             }
             eyeRig.update(weight: weight, deltaTime: deltaTime)
@@ -254,12 +274,13 @@ final class AvatarController {
         let mouthFunnel = (smoothedBlendShapes[.mouthFunnel] ?? 0) * presence
         let mouthClose = (smoothedBlendShapes[.mouthClose] ?? 0) * presence
         let mouthOpen = max(appliedJawOpen, 0.5 * mouthFunnel) * (1 - 0.85 * mouthClose)
+        lastMouthOpen = mouthOpen
         if blendShapesEnabled {
             for target in targets {
                 guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
                 for binding in target.bindings {
                     component.weightSet[binding.setIndex].weights[binding.weightIndex] =
-                        laughed(binding.location, (smoothedBlendShapes[binding.location] ?? 0) * presence, laughing)
+                        played(binding.location, (smoothedBlendShapes[binding.location] ?? 0) * presence)
                         + idle.weight(binding.location, eyeRange: eyeRange) * idleWeight
                 }
                 target.entity.components.set(component)
@@ -301,15 +322,21 @@ final class AvatarController {
                 bend = pose.bend
                 cover = pose.cover
                 blush = pose.blush
+                moveFace = (pose.mouthTakeover, pose.cheekPuff, pose.pucker, pose.bubbles)
             } else {
                 activeTrick = nil
             }
         }
+        if activeTrick == nil { moveFace = (0, 0, 0, 0) }
         finRig.bodyTurnRate = bodyTurnRate + idleTurnRate
         finRig.bodyNodRate = bodyNodRate
         finRig.steer = steer
         finRig.propulsion = max(effort, 0.45 * laughing)      // laughing: the tail wags, fins paddle
+        let vibrato = sin(2 * .pi * 5.5 * vibratoTime)
         finRig.clap = laughing * laugh.pulse                  // and the side fins clap on each "ha"
+            + 0.12 * bigNote * vibrato                        // a shimmer on a held note
+        finRig.spread = bigNote                               // big notes: fins open wide
+        finRig.finReaction = 1 + acting
         finRig.cover = cover
         lidRig.maxClosed = 1 - 0.95 * cover
         applyFaceShader(bend: bend, blush: max(blush, 0.3 * laughing))
@@ -335,9 +362,11 @@ final class AvatarController {
         let laughBounce = laughing * laugh.pulse
         root.position = followPosition * (1 - lapWeight) + swim.offset + (lap?.position ?? .zero) * lapWeight + trickOffset
             + SIMD3<Float>(0, 0.008 * laughBounce + 0.004 * laughing, 0)
+        // Big notes: head back, a vibrato tremble, the body swelling a little.
         body.orientation = swim.rotation     // relative to the head pose
-            * simd_quatf(angle: -0.12 * laughing - 0.07 * laughBounce, axis: [1, 0, 0])
-            * simd_quatf(angle: 0.05 * laughBounce, axis: [0, 0, 1])
+            * simd_quatf(angle: -0.12 * laughing - 0.07 * laughBounce - 0.15 * bigNote, axis: [1, 0, 0])
+            * simd_quatf(angle: 0.05 * laughBounce + 0.025 * bigNote * vibrato, axis: [0, 0, 1])
+        body.scale = SIMD3(repeating: 1 + 0.04 * bigNote)
 
         if options.mouthBubblesEnabled {
             updateMouthBubbles(jawOpen: appliedJawOpen, deltaTime: Float(min(deltaTime, 0.1)))
@@ -346,7 +375,7 @@ final class AvatarController {
             } else {
                 resetAudioBubbles()
             }
-            updateIdleBubbles(rate: idle.bubbles * idleWeight, deltaTime: Float(min(deltaTime, 0.1)))
+            updateIdleBubbles(rate: idle.bubbles * idleWeight + moveFace.bubbles, deltaTime: Float(min(deltaTime, 0.1)))
             // A little puff of bubbles on each "ha".
             if laughing > 0.4, laugh.pulse > 0.5, lastLaughPulse <= 0.5, let mouthEmitter {
                 let origin = mouthEmitter.convert(position: .zero, to: mouthBubbles)
@@ -364,6 +393,65 @@ final class AvatarController {
             mouthBubbleBursts.removeAll(keepingCapacity: true)
             resetAudioBubbles()
         }
+    }
+
+    /// The face as the fish plays it: acted bigger, laughing, singing big notes, and a move taking
+    /// over the mouth (blowing bubbles).
+    private func played(_ location: ARFaceAnchor.BlendShapeLocation, _ value: Float) -> Float {
+        blown(location, sung(location, laughed(location, acted(location, value), laughing)))
+    }
+
+    /// Acting bigger: every expression pushed toward its full shape (a small one grows up to 2.5x),
+    /// except where the eyes look, blinks, and the lip seal.
+    private func acted(_ location: ARFaceAnchor.BlendShapeLocation, _ value: Float) -> Float {
+        guard acting > 0, value > 0 else { return value }
+        switch location {
+        case .eyeBlinkLeft, .eyeBlinkRight, .mouthClose,
+             .eyeLookUpLeft, .eyeLookUpRight, .eyeLookDownLeft, .eyeLookDownRight,
+             .eyeLookInLeft, .eyeLookInRight, .eyeLookOutLeft, .eyeLookOutRight:
+            return value
+        default:
+            return 1 - pow(1 - min(value, 1), 1 + 1.5 * acting)
+        }
+    }
+
+    /// Big notes: brows up, eyes wide, the mouth opening a little more.
+    private func sung(_ location: ARFaceAnchor.BlendShapeLocation, _ value: Float) -> Float {
+        guard bigNote > 0 else { return value }
+        switch location {
+        case .browInnerUp, .browOuterUpLeft, .browOuterUpRight: return value + bigNote * 0.5 * (1 - value)
+        case .eyeWideLeft, .eyeWideRight: return value + bigNote * 0.4 * (1 - value)
+        case .jawOpen: return value + bigNote * 0.15 * (1 - value)
+        default: return value
+        }
+    }
+
+    /// A move taking over the mouth: puffed cheeks and puckered lips, the rest of the mouth at rest.
+    private func blown(_ location: ARFaceAnchor.BlendShapeLocation, _ value: Float) -> Float {
+        let takeover = moveFace.takeover
+        guard takeover > 0 else { return value }
+        switch location {
+        case .cheekPuff: return value * (1 - takeover) + moveFace.cheekPuff * takeover
+        case .mouthPucker: return value * (1 - takeover) + moveFace.pucker * takeover
+        default:
+            let name = location.rawValue
+            return name.hasPrefix("mouth") || name.hasPrefix("jaw") || name.hasPrefix("tongue")
+                ? value * (1 - takeover) : value
+        }
+    }
+
+    /// A head turn made bigger (`gain` times the angle, up to about 70 degrees).
+    private static func amplified(_ rotation: simd_quatf, by gain: Float) -> simd_quatf {
+        guard gain != 1 else { return rotation }
+        var angle = rotation.angle, axis = rotation.axis
+        if angle > .pi { angle = 2 * .pi - angle; axis = -axis }
+        guard angle > 1e-5 else { return rotation }
+        return simd_quatf(angle: min(angle * gain, 1.2), axis: axis)
+    }
+
+    private static func smoothstep(_ from: Float, _ to: Float, _ x: Float) -> Float {
+        let t = min(max((x - from) / (to - from), 0), 1)
+        return t * t * (3 - 2 * t)
     }
 
     /// Laughing pushes the face further: a wider smile, cheeks up, squeezed "happy" eyes, brows up,
@@ -389,7 +477,7 @@ final class AvatarController {
         laughReadoutTime = 0
         AvatarSession.shared.avatarDebug.laughReadout = LaughReadout(
             intensity: laugh.intensity, smile: laugh.smile, squint: laugh.squint,
-            jawRhythm: laugh.jawRhythm, voiceRhythm: laugh.voiceRhythm
+            jawRhythm: laugh.jawRhythm, voiceRhythm: laugh.voiceRhythm, bigNote: bigNote
         )
     }
 
@@ -418,6 +506,8 @@ final class AvatarController {
             activeTrick = SwimTrick(kind: .loop, direction: side)
         case .blush:
             activeTrick = SwimTrick(kind: .blush, direction: side)
+        case .bubbles:
+            activeTrick = SwimTrick(kind: .bubbles, direction: side)
         }
         lastTrickAngles = (0, 0)
     }
@@ -491,8 +581,8 @@ final class AvatarController {
         var target = SIMD3<Float>(repeating: 0)
         if enabled, let rotation = smoothedRotation {
             let facing = rotation.act([0, 0, 1])          // the fish faces +Z at rest
-            target = SIMD3(facing.x, facing.y, 0) * headFollowGain * fishSize
-            let limit = 0.4 * fishSize                      // stay in the frame
+            target = SIMD3(facing.x, facing.y, 0) * headFollowGain * (1 + acting) * fishSize
+            let limit = (0.4 + 0.15 * acting) * fishSize    // stay in the frame
             let length = simd_length(target)
             if length > limit { target *= limit / length }
         }

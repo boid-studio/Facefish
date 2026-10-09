@@ -10,6 +10,7 @@ enum ControlCommand: String, Codable, CaseIterable, Identifiable {
     case spin
     case loop
     case blush
+    case blowBubbles
 
     var id: String { rawValue }
 
@@ -22,6 +23,7 @@ enum ControlCommand: String, Codable, CaseIterable, Identifiable {
         case .spin: "Spin"
         case .loop: "Loop"
         case .blush: "Blush"
+        case .blowBubbles: "Blow bubbles"
         }
     }
 }
@@ -34,6 +36,8 @@ enum RemoteSetting: Codable, Equatable {
     case lipSeal(Float)
     case puckerPriority(Float)
     case cameraZ(Float)
+    /// 0 = natural, 1 = big stage acting (AvatarController).
+    case acting(Float)
 
     /// Settings with the same key replace each other while queued.
     var key: String {
@@ -44,6 +48,7 @@ enum RemoteSetting: Codable, Equatable {
         case .lipSeal: "lipSeal"
         case .puckerPriority: "puckerPriority"
         case .cameraZ: "cameraZ"
+        case .acting: "acting"
         }
     }
 
@@ -55,6 +60,7 @@ enum RemoteSetting: Codable, Equatable {
         case .lipSeal(let v): "Lip seal \(String(format: "%.2f", v))"
         case .puckerPriority(let v): "Pucker priority \(String(format: "%.2f", v))"
         case .cameraZ(let v): "Camera Z \(String(format: "%.2f", v))"
+        case .acting(let v): "Acting \(String(format: "%.2f", v))"
         }
     }
 }

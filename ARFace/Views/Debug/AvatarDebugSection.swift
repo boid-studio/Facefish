@@ -41,6 +41,16 @@ struct RenderingDebugSection: View {
                 .font(.caption2)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
+            LabeledContent("Big note") {
+                Text("\(Int(model.laughReadout.bigNote * 100))%").monospacedDigit()
+            }
+        }
+
+        VStack(alignment: .leading) {
+            LabeledContent("Acting") {
+                Text("\(model.acting, specifier: "%.2f")").monospacedDigit()
+            }
+            Slider(value: $model.acting, in: 0...1) { Text("Acting") }
         }
 
         VStack(alignment: .leading) {

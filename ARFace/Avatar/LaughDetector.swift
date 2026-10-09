@@ -75,4 +75,6 @@ struct LaughReadout: Equatable {
     var squint: Float = 0
     var jawRhythm: Float = 0
     var voiceRhythm: Float = 0
+    /// Singing a big note (AvatarController), 0...1.
+    var bigNote: Float = 0
 }
