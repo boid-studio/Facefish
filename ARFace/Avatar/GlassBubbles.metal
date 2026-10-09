@@ -15,6 +15,11 @@ kernel void glassBubbles(
     constant float4x4 &projection [[buffer(2)]],
     constant float4x4 &inverseProjection [[buffer(3)]],
     constant float4 *bounds [[buffer(4)]],
+    // Screen tiles (tileInfo: tiles across, tile size in pixels); each tile lists only the bubbles
+    // touching it, back to front, as tileIndices[tileOffsets[tile] ..< tileOffsets[tile + 1]].
+    constant uint *tileOffsets [[buffer(5)]],
+    constant ushort *tileIndices [[buffer(6)]],
+    constant uint2 &tileInfo [[buffer(7)]],
     uint2 pixel [[thread_position_in_grid]]
 ) {
     if (pixel.x >= output.get_width() || pixel.y >= output.get_height()) return;
@@ -30,7 +35,9 @@ kernel void glassBubbles(
     float sceneDistance = -scenePosition.z > 0.0 ? length(scenePosition) : INFINITY;
     float4 color = scene.sample(linearSampler, uv);
 
-    for (uint i = 0; i < count; ++i) {
+    uint tile = (pixel.y / tileInfo.y) * tileInfo.x + pixel.x / tileInfo.y;
+    for (uint k = tileOffsets[tile]; k < tileOffsets[tile + 1]; ++k) {
+        uint i = tileIndices[k];
         float4 bound = bounds[i];
         if (any(uv < bound.xy) || any(uv > bound.zw)) continue;
         float3 center = spheres[i].xyz;

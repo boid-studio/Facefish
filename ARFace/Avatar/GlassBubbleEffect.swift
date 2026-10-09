@@ -85,6 +85,20 @@ struct GlassBubbleEffect: PostProcessEffect {
         boundData.withUnsafeBytes { bytes in
             encoder.setBytes(bytes.baseAddress!, length: bytes.count, index: 4)
         }
+        // Bubbles per screen tile, so each pixel only tests the few bubbles near it.
+        let (offsets, indices, tileInfo) = Self.tiles(
+            bounds: bounds,
+            width: context.targetColorTexture.width,
+            height: context.targetColorTexture.height
+        )
+        offsets.withUnsafeBytes { bytes in
+            setBuffer(encoder, bytes, index: 5, device: context.device)
+        }
+        indices.withUnsafeBytes { bytes in
+            setBuffer(encoder, bytes, index: 6, device: context.device)
+        }
+        var info = tileInfo
+        encoder.setBytes(&info, length: MemoryLayout<SIMD2<UInt32>>.size, index: 7)
         let width = pipeline.threadExecutionWidth
         let height = max(1, pipeline.maxTotalThreadsPerThreadgroup / width)
         encoder.dispatchThreads(
@@ -92,6 +106,51 @@ struct GlassBubbleEffect: PostProcessEffect {
             threadsPerThreadgroup: MTLSize(width: width, height: height, depth: 1)
         )
         encoder.endEncoding()
+    }
+
+    private static let tileSize = 64
+
+    /// Sorts the bubbles' screen bounds (uv) into tiles: offsets (one per tile, plus the end) and
+    /// the bubble indices, kept in the bubbles' back-to-front order within each tile.
+    private static func tiles(bounds: [SIMD4<Float>], width: Int, height: Int) -> ([UInt32], [UInt16], SIMD2<UInt32>) {
+        let tilesX = (width + tileSize - 1) / tileSize
+        let tilesY = (height + tileSize - 1) / tileSize
+        let ranges: [(x: ClosedRange<Int>, y: ClosedRange<Int>)?] = bounds.map { bound in
+            guard bound.x.isFinite, bound.y.isFinite, bound.z.isFinite, bound.w.isFinite,
+                  bound.z >= 0, bound.w >= 0, bound.x <= 1, bound.y <= 1 else { return nil }
+            func tile(_ uv: Float, _ size: Int, _ count: Int) -> Int {
+                min(count - 1, Int(min(max(uv, 0), 1) * Float(size)) / tileSize)
+            }
+            return (tile(bound.x, width, tilesX)...tile(bound.z, width, tilesX),
+                    tile(bound.y, height, tilesY)...tile(bound.w, height, tilesY))
+        }
+        var offsets = [UInt32](repeating: 0, count: tilesX * tilesY + 1)
+        for case let range? in ranges {
+            for y in range.y { for x in range.x { offsets[y * tilesX + x + 1] += 1 } }
+        }
+        for index in 1..<offsets.count { offsets[index] += offsets[index - 1] }
+        var fill = offsets
+        var indices = [UInt16](repeating: 0, count: max(1, Int(offsets[offsets.count - 1])))
+        for (sphere, range) in ranges.enumerated() {
+            guard let range else { continue }
+            for y in range.y {
+                for x in range.x {
+                    let tile = y * tilesX + x
+                    indices[Int(fill[tile])] = UInt16(sphere)
+                    fill[tile] += 1
+                }
+            }
+        }
+        return (offsets, indices, SIMD2(UInt32(tilesX), UInt32(tileSize)))
+    }
+
+    /// Small data goes inline; larger needs its own buffer (setBytes is limited to 4 KB).
+    private func setBuffer(_ encoder: any MTLComputeCommandEncoder, _ bytes: UnsafeRawBufferPointer, index: Int, device: any MTLDevice) {
+        if bytes.count <= 4096 {
+            encoder.setBytes(bytes.baseAddress!, length: bytes.count, index: index)
+        } else if let buffer = device.makeBuffer(bytes: bytes.baseAddress!, length: bytes.count) {
+            encoder.setBuffer(buffer, offset: 0, index: index)
+        }
     }
 
     private func copySource(context: borrowing PostProcessEffectContext<any MTLCommandBuffer>) {

@@ -30,6 +30,19 @@ struct RenderingDebugSection: View {
                 .monospacedDigit()
         }
 
+        // Laughing needs a smile, plus squinting eyes or a jaw/voice "ha-ha" rhythm.
+        VStack(alignment: .leading, spacing: 4) {
+            LabeledContent("Laugh") {
+                Text("\(Int(model.laughReadout.intensity * 100))%")
+                    .monospacedDigit()
+            }
+            ProgressView(value: Double(min(max(model.laughReadout.intensity, 0), 1)))
+            Text("smile \(model.laughReadout.smile, specifier: "%.2f")  squint \(model.laughReadout.squint, specifier: "%.2f")  jaw \(model.laughReadout.jawRhythm, specifier: "%.3f")  voice \(model.laughReadout.voiceRhythm, specifier: "%.3f")")
+                .font(.caption2)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+
         VStack(alignment: .leading) {
             LabeledContent("Camera Z") {
                 Text("\(model.cameraZ, specifier: "%.2f") m")

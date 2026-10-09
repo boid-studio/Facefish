@@ -102,6 +102,8 @@ final class FinRig {
     /// 0...1 per side (fish's left, right): the side fin swings up and folds over the eye, like a
     /// hand hiding it (a blush). Its usual motion fades out meanwhile.
     var cover = SIMD2<Float>(repeating: 0)
+    /// -1...1: both side fins flap together (a laugh's "ha"s).
+    var clap: Float = 0
     /// 0...1: the fish is swimming under its own power (a lap). The tail beats hard, the side fins
     /// paddle and tuck back, the dorsal fin folds back.
     var propulsion: Float = 0
@@ -111,6 +113,25 @@ final class FinRig {
     var finWaveSpeed: Float = 1
 
     private let logger = Logger(subsystem: "ARFace", category: "FinRig")
+
+    /// The left side fin over its eye (cover = 1). Solved against the head, eyeball, open lid and
+    /// lashes so it covers the eye seen from the camera, lies close along the face, and never cuts
+    /// into the face on the way there (the lids stay open meanwhile; see LidRig.maxClosed). Turns are rotation vectors (axis * radians): the root's in the skeleton's
+    /// space, the middle and tip joints' in their own. Stretch scales the root joint (local Y runs
+    /// along the fin); the move is the root's. The swing turns the root out of the way partway
+    /// (most at cover 0.5, none at either end).
+    private static let coverRootTurn = SIMD3<Float>(1.6760, 0.2255, 2.2613)
+    private static let coverRootMove = SIMD3<Float>(0.0684, 0.0164, 0.3618)
+    private static let coverStretch = SIMD3<Float>(0.7007, 1.1829, 0.6985)
+    private static let coverMiddleBend = SIMD3<Float>(-0.4178, 0.1392, -0.2766)
+    private static let coverTipBend = SIMD3<Float>(-0.6634, -0.9847, -0.1170)
+    private static let coverSwing = SIMD3<Float>(2.0002, 0.0748, -1.0005)
+
+    /// A rotation from a rotation vector (axis * radians).
+    private static func turn(_ vector: SIMD3<Float>) -> simd_quatf {
+        let angle = simd_length(vector)
+        return angle > 1e-6 ? simd_quatf(angle: angle, axis: vector / angle) : simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+    }
     private var modelRigs: [ModelRig] = []
     private var waveTargets: [WaveTarget] = []
     private var boundJointNames: Set<String> = []
@@ -241,6 +262,7 @@ final class FinRig {
             for index in 0..<2 {
                 let waveAngle = 5.6 * time + phase - 0.7 * Float(index)
                 pose.pectoralFlap[sideIndex][index] = free * (flapSprings[sideIndex][index].angle
+                    + 0.45 * clap
                     + 0.14 * finSway * energy * sin(waveAngle)
                     + (0.22 * propulsion + 0.4 * outside) * sin(0.5 * strokePhase + phase * 6 - 0.7 * Float(index)))   // paddling
                 pose.pectoralSweep[sideIndex][index] = free * (sweepSprings[sideIndex][index].angle
@@ -329,15 +351,23 @@ final class FinRig {
                     transform.rotation = transform.rotation
                         * simd_quatf(angle: pose.pectoralFlap[side][index], axis: [1, 0, 0])
                         * simd_quatf(angle: pose.pectoralSweep[side][index], axis: [0, 0, 1])
-                    // Over the eye: a turn about the fin's root and a move up and forward, in the
-                    // skeleton's space (+Y up, +Z forward, +X the fish's left; the right fin mirrors).
-                    // Partway, the fin lifts out to the side first, so it never cuts through the face.
-                    if root, pose.cover[side] > 0 {
-                        let mirror: Float = side == 0 ? 1 : -1
-                        let axis = simd_normalize(SIMD3<Float>(0.6813, -0.2077 * mirror, 0.7019 * mirror))
-                        transform.rotation = simd_quatf(angle: 153.3 * .pi / 180 * pose.cover[side], axis: axis)
-                            * transform.rotation
-                        transform.translation += SIMD3<Float>(-0.02 * mirror, 0.2, 0.3) * pose.cover[side]
+                    // Over the eye (see coverRootTurn): the fin turns about its root (in the
+                    // skeleton's space: +Y up, +Z forward, +X the fish's left), stretches, and bends
+                    // at its middle and tip joints to lie along the face. On the way it comes up
+                    // edge-on from below and opens over the eye, clear of the face all along.
+                    let cover = pose.cover[side]
+                    if cover > 0 {
+                        // The right fin mirrors the left: turns (x, -y, -z), moves (-x, y, z).
+                        let mirror = side == 0 ? SIMD3<Float>(1, 1, 1) : SIMD3<Float>(1, -1, -1)
+                        if root {
+                            transform.rotation = Self.turn(Self.coverSwing * mirror * sin(.pi * cover))
+                                * Self.turn(Self.coverRootTurn * mirror * cover) * transform.rotation
+                            transform.scale *= 1 + (Self.coverStretch - 1) * cover
+                            transform.translation += Self.coverRootMove * SIMD3(side == 0 ? 1 : -1, 1, 1) * cover
+                        } else {
+                            let bend = index == 0 ? Self.coverMiddleBend : Self.coverTipBend
+                            transform.rotation = transform.rotation * Self.turn(bend * mirror * cover)
+                        }
                     }
                 case let .dorsal(index):
                     transform.rotation = transform.rotation

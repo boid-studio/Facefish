@@ -6,7 +6,8 @@ import simd
 ///
 /// The path is a closed loop through `points` (metres, in the avatar's scene frame: +X screen
 /// right, +Y up, +Z toward the camera; the fish's home is the origin). Edit the points to change
-/// it; the curve runs smoothly through them (Catmull-Rom).
+/// it; the curve runs smoothly through them (Catmull-Rom). It sets off toward the camera, then
+/// curves away.
 ///
 /// Every lap is a little different: it starts from wherever the fish is, goes off to the side the
 /// fish already faces (mirroring the path), stretches and lifts the path a bit, surges and eases
@@ -15,7 +16,8 @@ struct SwimAround {
     /// Where the lap goes. Keep the first and last at the origin (home).
     var points: [SIMD3<Float>] = [
         [0, 0, 0],
-        [0.10, 0.02, -0.12],
+        [0.04, 0.015, 0.09],
+        [0.13, 0.03, -0.05],
         [0.14, 0.05, -0.36],
         [0.03, 0.07, -0.62],
         [-0.12, 0.05, -0.45],
@@ -23,7 +25,7 @@ struct SwimAround {
         [0, 0, 0],
     ]
     /// Seconds for an average lap; each one is up to 15% quicker or slower.
-    var duration: Float = 5.3
+    var duration: Float = 5.8
     /// Seconds the fins work before the fish sets off; the body starts turning once they have.
     var windUp: Float = 0.35
 

@@ -38,6 +38,14 @@ final class AvatarController {
     private let eyeRig: EyeRig
     private let lidRig: LidRig
     private var swimMotion = SwimMotion()
+    /// Looking around and blowing bubbles while there's no face (IdleLife.swift).
+    private var idleLife = IdleLife()
+    private var idleYaw: Float = 0
+    private var idleBubbleBacklog: Float = 0
+    /// Laughter in the face and voice (LaughDetector.swift), played bigger on the fish.
+    private var laugh = LaughDetector()
+    private var lastLaughPulse: Float = 0
+    private var laughReadoutTime: Float = 0
     /// A lap around the bowl (SwimAround.swift) and the quick moves (SwimTrick.swift).
     private var swimAround = SwimAround()
     private var activeTrick: SwimTrick?
@@ -208,21 +216,38 @@ final class AvatarController {
             }
         }
 
+        // Waiting for a face: the fish looks around and blows bubbles, as much as the face is gone.
+        let idleWeight = 1 - presence
+        let idle = idleLife.update(deltaTime: Float(min(deltaTime, 0.1)), waiting: !isTracked, weight: idleWeight)
+        let idleRotation = simd_quatf(angle: idle.yaw, axis: [0, 1, 0])
+            * simd_quatf(angle: idle.pitch, axis: [1, 0, 0])
+            * simd_quatf(angle: idle.roll, axis: [0, 0, 1])
+        let idleTurnRate = (idle.yaw * idleWeight - idleYaw) / Float(min(deltaTime, 0.1))
+        idleYaw = idle.yaw * idleWeight
+
         // Without tracking, the last tracked pose stays as the "live" end of the blend while it fades out.
         root.orientation = smoothedRotation.map {
-            simd_slerp(simd_quatf(ix: 0, iy: 0, iz: 0, r: 1), $0, presence)
-        } ?? simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
+            simd_slerp(idleRotation, $0, presence)
+        } ?? idleRotation
 
+        // Laughing: the fish laughs bigger (see laughed(_:_:)), in time with each "ha".
+        laugh.update(weights: isTracked ? lastBlendShapes : nil, voice: audio.overall, deltaTime: Float(min(deltaTime, 0.1)))
+        let laughing = laugh.intensity * presence
+        publishLaughReadout(deltaTime: Float(min(deltaTime, 0.1)))
+
+        let eyeRange = eyeRig.range
         if let blendShapes = lastBlendShapes {
             let mirrored = self.mirrored
-            let weight: (ARFaceAnchor.BlendShapeLocation) -> Float = {
-                (blendShapes[mirrored ? BlendShapeMapping.mirrored($0) : $0] ?? 0) * presence
+            let weight: (ARFaceAnchor.BlendShapeLocation) -> Float = { [self] location in
+                laughed(location, (blendShapes[mirrored ? BlendShapeMapping.mirrored(location) : location] ?? 0) * presence, laughing)
+                    + idle.weight(location, eyeRange: eyeRange) * idleWeight
             }
             eyeRig.update(weight: weight, deltaTime: deltaTime)
             lidRig.update(weight: weight, deltaTime: deltaTime)
         } else {
-            eyeRig.update(weight: nil, deltaTime: deltaTime)
-            lidRig.update(weight: nil, deltaTime: deltaTime)
+            let weight: (ARFaceAnchor.BlendShapeLocation) -> Float = { idle.weight($0, eyeRange: eyeRange) }
+            eyeRig.update(weight: weight, deltaTime: deltaTime)
+            lidRig.update(weight: weight, deltaTime: deltaTime)
         }
 
         appliedJawOpen = (smoothedBlendShapes[.jawOpen] ?? 0) * presence
@@ -234,7 +259,8 @@ final class AvatarController {
                 guard var component = target.entity.components[BlendShapeWeightsComponent.self] else { continue }
                 for binding in target.bindings {
                     component.weightSet[binding.setIndex].weights[binding.weightIndex] =
-                        (smoothedBlendShapes[binding.location] ?? 0) * presence
+                        laughed(binding.location, (smoothedBlendShapes[binding.location] ?? 0) * presence, laughing)
+                        + idle.weight(binding.location, eyeRange: eyeRange) * idleWeight
                 }
                 target.entity.components.set(component)
             }
@@ -279,12 +305,14 @@ final class AvatarController {
                 activeTrick = nil
             }
         }
-        finRig.bodyTurnRate = bodyTurnRate
+        finRig.bodyTurnRate = bodyTurnRate + idleTurnRate
         finRig.bodyNodRate = bodyNodRate
         finRig.steer = steer
-        finRig.propulsion = effort
+        finRig.propulsion = max(effort, 0.45 * laughing)      // laughing: the tail wags, fins paddle
+        finRig.clap = laughing * laugh.pulse                  // and the side fins clap on each "ha"
         finRig.cover = cover
-        applyFaceShader(bend: bend, blush: blush)
+        lidRig.maxClosed = 1 - 0.95 * cover
+        applyFaceShader(bend: bend, blush: max(blush, 0.3 * laughing))
 
         // Once fully at rest, nil hands the fins over to their idle swim.
         let finAngles = presence > 0 ? lastFinAngles : nil
@@ -301,10 +329,15 @@ final class AvatarController {
         // when toggled instead of jumping.
         let swimTarget: Float = options.swimMotionEnabled ? 1 : 0
         swimAmount += (swimTarget - swimAmount) * Self.smoothingFactor(deltaTime: deltaTime, timeConstant: 0.5)
-        swimMotion.amount = swimAmount
+        swimMotion.amount = swimAmount * (1 + 0.8 * idleWeight)   // livelier while waiting
         let swim = swimMotion.update(deltaTime: Float(min(deltaTime, 0.1)), mouthOpen: mouthOpen, size: fishSize)
+        // Laughing: head thrown back a little, bouncing and rocking on each "ha".
+        let laughBounce = laughing * laugh.pulse
         root.position = followPosition * (1 - lapWeight) + swim.offset + (lap?.position ?? .zero) * lapWeight + trickOffset
+            + SIMD3<Float>(0, 0.008 * laughBounce + 0.004 * laughing, 0)
         body.orientation = swim.rotation     // relative to the head pose
+            * simd_quatf(angle: -0.12 * laughing - 0.07 * laughBounce, axis: [1, 0, 0])
+            * simd_quatf(angle: 0.05 * laughBounce, axis: [0, 0, 1])
 
         if options.mouthBubblesEnabled {
             updateMouthBubbles(jawOpen: appliedJawOpen, deltaTime: Float(min(deltaTime, 0.1)))
@@ -313,12 +346,51 @@ final class AvatarController {
             } else {
                 resetAudioBubbles()
             }
+            updateIdleBubbles(rate: idle.bubbles * idleWeight, deltaTime: Float(min(deltaTime, 0.1)))
+            // A little puff of bubbles on each "ha".
+            if laughing > 0.4, laugh.pulse > 0.5, lastLaughPulse <= 0.5, let mouthEmitter {
+                let origin = mouthEmitter.convert(position: .zero, to: mouthBubbles)
+                let direction = simd_normalize(mouthEmitter.convert(direction: [0, -1, 0], to: mouthBubbles))
+                for _ in 0..<Int.random(in: 3...6) {
+                    mouthBubbleSpheres?.emit(count: 1, origin: origin, direction: direction,
+                                             radiusScale: Float.random(in: 0.15...0.45), speedScale: Float.random(in: 0.3...0.7))
+                }
+            }
+            lastLaughPulse = laugh.pulse
             mouthBubbleSpheres?.update(deltaTime: deltaTime)
         } else {
+            lastLaughPulse = 0
             mouthIsOpen = false
             mouthBubbleBursts.removeAll(keepingCapacity: true)
             resetAudioBubbles()
         }
+    }
+
+    /// Laughing pushes the face further: a wider smile, cheeks up, squeezed "happy" eyes, brows up,
+    /// lips apart, and the jaw dropping further on each "ha". `amount` 0...1 is how hard it laughs.
+    private func laughed(_ location: ARFaceAnchor.BlendShapeLocation, _ value: Float, _ amount: Float) -> Float {
+        guard amount > 0 else { return value }
+        switch location {
+        case .mouthSmileLeft, .mouthSmileRight: return value + amount * 0.6 * (1 - value)
+        case .cheekSquintLeft, .cheekSquintRight: return value + amount * 0.7 * (1 - value)
+        case .eyeBlinkLeft, .eyeBlinkRight: return value + amount * 0.55 * (1 - value)
+        case .eyeSquintLeft, .eyeSquintRight: return value + amount * 0.6 * (1 - value)
+        case .browInnerUp: return value + amount * 0.35 * (1 - value)
+        case .jawOpen: return min(1, value + amount * (0.1 + 0.35 * max(0, laugh.pulse)))
+        case .mouthClose: return value * (1 - amount)
+        default: return value
+        }
+    }
+
+    /// The laugh detector's numbers for the debug panel, a few times a second.
+    private func publishLaughReadout(deltaTime: Float) {
+        laughReadoutTime += deltaTime
+        guard laughReadoutTime >= 0.25 else { return }
+        laughReadoutTime = 0
+        AvatarSession.shared.avatarDebug.laughReadout = LaughReadout(
+            intensity: laugh.intensity, smile: laugh.smile, squint: laugh.squint,
+            jawRhythm: laugh.jawRhythm, voiceRhythm: laugh.voiceRhythm
+        )
     }
 
     /// The next move asked for in AvatarSession. Asks while a move is running are dropped.
@@ -564,6 +636,29 @@ final class AvatarController {
                 direction: direction,
                 radiusScale: Float.random(in: 0.1...0.22),
                 speedScale: Float.random(in: 0.2...0.5)
+            )
+        }
+    }
+
+    /// A stream of bubbles blown through puckered lips while waiting for a face (IdleLife).
+    private func updateIdleBubbles(rate: Float, deltaTime: Float) {
+        guard let mouthEmitter, let mouthBubbleSpheres, rate > 0 else {
+            idleBubbleBacklog = 0
+            return
+        }
+        idleBubbleBacklog += rate * deltaTime
+        let count = Int(idleBubbleBacklog)
+        idleBubbleBacklog -= Float(count)
+        guard count > 0 else { return }
+        let origin = mouthEmitter.convert(position: .zero, to: mouthBubbles)
+        let direction = simd_normalize(mouthEmitter.convert(direction: [0, -1, 0], to: mouthBubbles))
+        for _ in 0..<count {
+            mouthBubbleSpheres.emit(
+                count: 1,
+                origin: origin,
+                direction: direction,
+                radiusScale: Float.random(in: 0.15...0.55),
+                speedScale: Float.random(in: 0.5...0.9)
             )
         }
     }

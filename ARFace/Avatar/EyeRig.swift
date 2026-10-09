@@ -96,6 +96,9 @@ final class LidRig {
     var angle: Float = 77
     /// Extra closing with no blink, as a fraction of a full blink (0 = as modelled).
     var neutral: Float = 0
+    /// How far each lid (fish's left, right) may close, 0...1. A side fin over the eye holds the lid
+    /// open: a closing lid swings the lashes forward, through the fin.
+    var maxClosed = SIMD2<Float>(1, 1)
 
     private struct Lid {
         let entity: Entity
@@ -177,8 +180,8 @@ final class LidRig {
         }
         // Blinks are fast; keep up with them. Without tracking, settle slowly.
         let alpha = Float(1 - exp(-deltaTime / (weight == nil ? 0.15 : 0.012)))
-        step(&left, to: targetL, alpha: alpha)
-        step(&right, to: targetR, alpha: alpha)
+        step(&left, to: min(targetL, maxClosed.x), alpha: alpha)
+        step(&right, to: min(targetR, maxClosed.y), alpha: alpha)
     }
 
     /// Blink, plus a little for a squint, minus a little for wide eyes: -0.3 (wide open) ... 1 (shut).
