@@ -90,9 +90,11 @@ does not need a TrueDepth camera.
 3. Allow Bluetooth access on both devices and accept the iOS Bluetooth pairing
    prompt if shown. Commands become available once the encrypted connection
    and Facefish handshake finish.
-4. Use **Ping**, **Mirror on**, or **Mirror off**. Ping only creates a log entry;
-   the Mirror commands also update the main avatar, including on an external
-   display. Successful delivery means the main app acknowledged the command.
+4. Use the **Actions** tab to trigger **Swim a lap**, **Spin**, **Loop**, or
+   **Blush** on the main avatar. The connection screen also provides **Ping**,
+   **Mirror on**, and **Mirror off**; Ping only creates a log entry, while the
+   Mirror commands update the main avatar, including on an external display.
+   Successful delivery means the main app acknowledged the command.
 5. The main app's **Received commands** section shows the latest 100 commands,
    newest first, with receipt times and a **Clear log** button.
 

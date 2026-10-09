@@ -15,6 +15,10 @@ struct ARFaceApp: App {
                         case .ping: break
                         case .mirrorOn: AvatarSession.shared.mirrored = true
                         case .mirrorOff: AvatarSession.shared.mirrored = false
+                        case .swimLap: AvatarSession.shared.pendingMoves.append(.lap)
+                        case .spin: AvatarSession.shared.pendingMoves.append(.spin)
+                        case .loop: AvatarSession.shared.pendingMoves.append(.loop)
+                        case .blush: AvatarSession.shared.pendingMoves.append(.blush)
                         }
                     }
                     BluetoothControl.shared.onSetting = { setting in

@@ -170,9 +170,12 @@ struct ControlActionsView: View {
         var id: String { command.id }
     }
 
-    // Placeholder until real actions are defined.
     private let actions = [
         Action(title: "Ping", systemImage: "dot.radiowaves.left.and.right", command: .ping),
+        Action(title: "Swim a lap", systemImage: "point.forward.to.point.capsulepath", command: .swimLap),
+        Action(title: "Spin", systemImage: "rotate.3d", command: .spin),
+        Action(title: "Loop", systemImage: "arrow.clockwise", command: .loop),
+        Action(title: "Blush", systemImage: "heart", command: .blush),
     ]
 
     var body: some View {

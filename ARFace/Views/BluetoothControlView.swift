@@ -59,7 +59,7 @@ struct BluetoothControlView: View {
                             Button(command.title) { bluetooth.send(command) }
                                 .disabled(!bluetooth.isConnected || bluetooth.isSending)
                         }
-                        Text("Ping adds a log entry; Mirror on/off changes the main app's avatar mirroring.")
+                        Text("Ping adds a log entry, Mirror on/off changes avatar mirroring, and move commands trigger an avatar action.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }

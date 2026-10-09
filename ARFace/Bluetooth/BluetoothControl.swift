@@ -6,6 +6,10 @@ enum ControlCommand: String, Codable, CaseIterable, Identifiable {
     case ping
     case mirrorOn
     case mirrorOff
+    case swimLap
+    case spin
+    case loop
+    case blush
 
     var id: String { rawValue }
 
@@ -14,6 +18,10 @@ enum ControlCommand: String, Codable, CaseIterable, Identifiable {
         case .ping: "Ping"
         case .mirrorOn: "Mirror on"
         case .mirrorOff: "Mirror off"
+        case .swimLap: "Swim a lap"
+        case .spin: "Spin"
+        case .loop: "Loop"
+        case .blush: "Blush"
         }
     }
 }
