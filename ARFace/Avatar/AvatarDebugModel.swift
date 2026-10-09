@@ -110,6 +110,7 @@ final class AvatarDebugModel {
         guard sampledDuration >= 0.5 else { return }
 
         framesPerSecond = Double(sampledFrameCount) / sampledDuration
+        if ProcessInfo.processInfo.arguments.contains("-logFPS") { print("[fps] \(String(format: "%.1f", framesPerSecond))") }
         sampledFrameCount = 0
         sampledDuration = 0
     }

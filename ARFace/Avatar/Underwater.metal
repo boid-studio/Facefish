@@ -241,13 +241,26 @@ void faceCausticSurface(realitykit::surface_parameters params) {
 
     emissive += waterScatter(position, tintScale, t);
 
+    // Shine: the metallic map marks the purple dots; they get a smoother, glossier surface.
+    half dots = tex.metallic().sample(s, uv).r;
+    half roughness = tex.roughness().sample(s, uv).r * half(material.roughness_scale());
+    roughness *= half(1.0) - half(0.65) * dots;
+    half clearcoat = max(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()), dots * half(0.9));
+
+    // Normal map (the dots' relief), a bit stronger on the dots so they catch the light.
+    // Only red/green are used and blue is rebuilt (the map is flat grey off the dots, not blue).
+    half2 slope = tex.normal().sample(s, uv).rg * half(2.0) - half(1.0);
+    slope *= half(1.0) + half(1.2) * dots;
+    half3 bump = half3(slope, sqrt(max(half(0.0), half(1.0) - dot(slope, slope))));
+
     auto surface = params.surface();
     surface.set_base_color(baseColor);
     surface.set_emissive_color(emissive);
-    surface.set_roughness(tex.roughness().sample(s, uv).r * half(material.roughness_scale()));
+    surface.set_normal(float3(normalize(bump)));
+    surface.set_roughness(roughness);
     surface.set_metallic(tex.metallic().sample(s, uv).r * half(material.metallic_scale()));
-    surface.set_specular(tex.specular().sample(s, uv).r * half(material.specular_scale()));
+    surface.set_specular(saturate(tex.specular().sample(s, uv).r * half(material.specular_scale()) + dots * half(0.3)));
     surface.set_ambient_occlusion(tex.ambient_occlusion().sample(s, uv).r);
-    surface.set_clearcoat(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()));
-    surface.set_clearcoat_roughness(tex.clearcoat_roughness().sample(s, uv).r * half(material.clearcoat_roughness_scale()));
+    surface.set_clearcoat(clearcoat);
+    surface.set_clearcoat_roughness(half(0.08));
 }
