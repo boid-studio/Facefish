@@ -168,9 +168,13 @@ mode; the other diagnostics are informational.
 
 ## Fish asset
 
-The fin rig uses the tail and pectoral joints in `fish.usdz` and applies UV-mapped
+`ARFace/Resources/fish.usdz` is exported from the Blender file with `tools/save-export-copy.py`
+(run inside Blender) and `tools/export-fish.sh`; see [docs/fish-export.md](docs/fish-export.md)
+for the steps and the parts the app expects.
+
+The fin rig uses the tail, pectoral and dorsal joints in `fish.usdz` and applies UV-mapped
 waves to the tail, dorsal, and pectoral fins. Keep the expected joint names
-(`Tail_1`–`Tail_3`, `Pec_L_1`–`Pec_L_2`, and `Pec_R_1`–`Pec_R_2`) and the
+(`Tail_1`–`Tail_3`, `Pec_L_0`–`Pec_L_2`, `Pec_R_0`–`Pec_R_2`, and `Dorsal_0`–`Dorsal_3`) and the
 `FinWave` second UV set when replacing or editing the model. Eyelid meshes are
 excluded from general blink blend-shape binding and custom material overrides.
 Fin reaction, swim, ripple-height, and ripple-speed defaults are defined in
