@@ -51,7 +51,7 @@ struct ContentView: View {
                     .overlay(alignment: .bottomTrailing) {
                         if isAvatarReady { settingsButton }
                     }
-                    .overlay(alignment: .bottom) {
+                    .overlay(alignment: .bottomLeading) {
                         if isAvatarReady { moveButtons }
                     }
                     .inspector(isPresented: $avatarSession.showDebug) {
@@ -108,13 +108,15 @@ struct ContentView: View {
 
     /// Makes the fish swim a lap, spin, loop or blush (later also from the companion).
     private var moveButtons: some View {
-        HStack(spacing: 16) {
+        // From the left, clear of the settings button on the right.
+        HStack(spacing: 12) {
             moveButton(.lap, systemImage: "point.forward.to.point.capsulepath", label: "Swim a lap")
             moveButton(.spin, systemImage: "rotate.3d", label: "Spin")
             moveButton(.loop, systemImage: "arrow.clockwise", label: "Loop")
             moveButton(.blush, systemImage: "heart", label: "Blush")
             moveButton(.bubbles, systemImage: "bubbles.and.sparkles", label: "Blow bubbles")
         }
+        .padding(.leading, 16)
         .padding(.bottom, 24)
     }
 
