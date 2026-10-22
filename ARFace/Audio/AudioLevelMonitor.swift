@@ -1,6 +1,5 @@
 import Accelerate
 import AVFoundation
-import OSLog
 import Synchronization
 
 /// Microphone levels, each normalized to 0...1 between `AudioSpectrumAnalyzer.floorDecibels`
@@ -28,7 +27,6 @@ final class AudioLevelMonitor {
 
     private let engine = AVAudioEngine()
     private let analyzer = AudioSpectrumAnalyzer()
-    private let logger = Logger(subsystem: "ARFace", category: "Audio")
     private var startTask: Task<Void, Never>?
     private var observers: [any NSObjectProtocol] = []
     private var tapInstalled = false
@@ -46,7 +44,6 @@ final class AudioLevelMonitor {
             guard !Task.isCancelled else { return }
             startTask = nil
             guard granted else {
-                logger.error("Microphone permission denied; audio-reactive bubbles are disabled.")
                 status = .denied
                 return
             }
@@ -88,11 +85,9 @@ final class AudioLevelMonitor {
             try engine.start()
             observeSession()
             status = .running
-            logger.info("Microphone level monitoring started at \(format.sampleRate) Hz.")
         } catch {
             stopEngine()
             status = .failed(error.localizedDescription)
-            logger.error("Microphone level monitoring unavailable: \(error.localizedDescription)")
         }
     }
 
@@ -159,7 +154,6 @@ nonisolated final class AudioSpectrumAnalyzer: @unchecked Sendable {
     static let sensitivityRange: ClosedRange<Float> = 0...36
     private static let attackTime: Float = 0.03
     private static let releaseTime: Float = 0.25
-    private static let logInterval: Float = 0.25
     private static let window = vDSP.window(
         ofType: Float.self,
         usingSequence: .hanningDenormalized,
@@ -171,7 +165,6 @@ nonisolated final class AudioSpectrumAnalyzer: @unchecked Sendable {
 
     private let published = Mutex(AudioLevels.silent)
     private let sensitivity = Mutex(defaultSensitivityDecibels)
-    private let logger = Logger(subsystem: "ARFace", category: "Audio")
     private let zeros = [Float](repeating: 0, count: fftSize)
     private let dft = try? vDSP.DiscreteFourierTransform(
         previous: nil,
@@ -183,7 +176,6 @@ nonisolated final class AudioSpectrumAnalyzer: @unchecked Sendable {
     private var history = [Float](repeating: 0, count: fftSize)
     private var sampleRate: Double = 48_000
     private var smoothed = AudioLevels.silent
-    private var timeSinceLog: Float = 0
 
     var levels: AudioLevels { published.withLock { $0 } }
 
@@ -196,7 +188,6 @@ nonisolated final class AudioSpectrumAnalyzer: @unchecked Sendable {
         if let sampleRate { self.sampleRate = sampleRate }
         history = [Float](repeating: 0, count: Self.fftSize)
         smoothed = .silent
-        timeSinceLog = 0
         published.withLock { $0 = .silent }
     }
 
@@ -259,12 +250,6 @@ nonisolated final class AudioSpectrumAnalyzer: @unchecked Sendable {
         )
         let levels = smoothed
         published.withLock { $0 = levels }
-
-        timeSinceLog += deltaTime
-        if timeSinceLog >= Self.logInterval {
-            timeSinceLog = 0
-            logger.debug("Audio levels overall=\(levels.overall, format: .fixed(precision: 2)) low=\(levels.low, format: .fixed(precision: 2)) mid=\(levels.mid, format: .fixed(precision: 2)) high=\(levels.high, format: .fixed(precision: 2))")
-        }
     }
 
     private static func normalized(decibels: Float, sensitivityDecibels: Float) -> Float {

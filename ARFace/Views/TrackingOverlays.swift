@@ -6,7 +6,9 @@ struct TrackingStatusBanner: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.25)) { _ in
-            if let error = tracker.lastError {
+            if !tracker.isSupported {
+                banner(Label("Face tracking unavailable", systemImage: "faceid"))
+            } else if let error = tracker.lastError {
                 banner(Label(error, systemImage: "exclamationmark.triangle"))
             } else if tracker.snapshot()?.isTracked != true {
                 banner(Label("Looking for a face…", systemImage: "faceid"))

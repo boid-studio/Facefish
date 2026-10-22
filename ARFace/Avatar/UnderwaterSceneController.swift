@@ -215,10 +215,15 @@ final class BubbleSphereSystem {
 /// Dresses the Reality Composer Pro `UnderwaterScene` anchors (Backdrop, BubbleEmitter)
 /// with a sea-blue backdrop, light from above, caustics (see Underwater.metal) and rising bubbles.
 final class UnderwaterSceneController {
+    private enum CausticKind {
+        case face, surface
+    }
+
     private struct MaterialOverride {
         let entity: Entity
-        let enabledMaterials: [any Material]
+        var enabledMaterials: [any Material]
         let disabledMaterials: [any Material]
+        var kind: CausticKind?
     }
 
     private let library = MTLCreateSystemDefaultDevice()?.makeDefaultLibrary()
@@ -229,6 +234,10 @@ final class UnderwaterSceneController {
     private var time: Float = 0
     private var ambientBubbles: BubbleSphereSystem?
     private var causticsEnabled = true
+    private var causticScale: Float = 1
+    private var causticSpeed: Float = 1
+    private var causticIntensity: Float = 1
+    private var causticAngle: Float = 0
     private var ambientBubblesEnabled = true
     private var spotlightsEnabled = true
     private var shadowsEnabled = true
@@ -266,6 +275,7 @@ final class UnderwaterSceneController {
     func update(deltaTime: TimeInterval, options: AvatarRenderOptions) {
         guard deltaTime.isFinite, deltaTime > 0 else { return }
         setCausticsEnabled(options.causticsEnabled)
+        setCausticTuning(scale: options.causticScale, speed: options.causticSpeed, intensity: options.causticIntensity, angle: options.causticAngle)
         setAmbientBubblesEnabled(options.ambientBubblesEnabled)
         setSpotlightsEnabled(options.spotlightsEnabled)
         setShadowsEnabled(options.shadowsEnabled)
@@ -312,7 +322,8 @@ final class UnderwaterSceneController {
                 materialOverrides.append(MaterialOverride(
                     entity: entity,
                     enabledMaterials: faceMaterials.enabled,
-                    disabledMaterials: faceMaterials.disabled
+                    disabledMaterials: faceMaterials.disabled,
+                    kind: .face
                 ))
             } else if partCount == 1, !hasBlendShapes {
                 var model = existingModel
@@ -328,7 +339,8 @@ final class UnderwaterSceneController {
                 materialOverrides.append(MaterialOverride(
                     entity: entity,
                     enabledMaterials: enabledMaterials,
-                    disabledMaterials: disabledMaterials
+                    disabledMaterials: disabledMaterials,
+                    kind: fin == nil && !isEyelid ? .surface : nil
                 ))
             } else if fin != nil {
                 logger.error("Fin mesh \(entity.name, privacy: .public) has multiple parts; fin ripple is unavailable.")
@@ -350,13 +362,13 @@ final class UnderwaterSceneController {
                     surfaceShader: .init(named: "faceCausticSurface", in: library),
                     geometryModifier: .init(named: "faceBodyBend", in: library)
                 ) else { return nil }
-                // Swim bend (set each frame while swimming), caustic strength, spot glow.
-                material.custom.value = [0, 0, strength, 0]   // swim bend amplitude, phase, caustics, blush
+                material.custom.value = [0, 0, strength, 0]   // swim bend amplitude, phase, caustic tuning (0 = off), blush
                 result.append(material)
             }
             return result
         }
-        guard let enabled = make(strength: 4.5), let disabled = make(strength: 0) else {
+        guard let enabled = make(strength: Self.packedFaceTuning(scale: causticScale, speed: causticSpeed, intensity: causticIntensity, angle: causticAngle)),
+              let disabled = make(strength: 0) else {
             logger.error("Face caustic material unavailable; the body keeps its own material.")
             return nil
         }
@@ -387,8 +399,8 @@ final class UnderwaterSceneController {
 
             let shaderName = causticsEnabled ? "causticSurface" : "baseSurface"
             var material = try CustomMaterial(from: base, surfaceShader: .init(named: shaderName, in: library))
-            // Pattern frequency per metre, focus, strength, distance fog.
-            material.custom.value = [32, 6, 1.4, fog]
+            // Pattern frequency per metre, focus, strength, animation speed.
+            material.custom.value = [32 / causticScale, 6, 1.4 * causticIntensity, causticSpeed]
             return material
         } catch {
             logger.error("Caustic material unavailable: \(error.localizedDescription)")
@@ -485,6 +497,47 @@ final class UnderwaterSceneController {
             enabledMaterials: [materials.enabled],
             disabledMaterials: [materials.disabled]
         ))
+    }
+
+    /// Face shader packs frequency, speed, intensity (steps of 0.05) and angle (steps of 5 degrees) into one
+    /// float, mixed radix: ((f * 81 + s) * 61 + i) * 25 + a. Stays under 2^24 so it is exact.
+    private static func packedFaceTuning(scale: Float, speed: Float, intensity: Float, angle: Float) -> Float {
+        let f = min(max((20 / scale).rounded(), 0), 80)
+        let s = min(max((speed * 20).rounded(), 0), 80)
+        let i = min(max((intensity * 20).rounded(), 0), 60)
+        let a = min(max((angle / 5).rounded(), -12), 12) + 12
+        return ((f * 81 + s) * 61 + i) * 25 + a
+    }
+
+    private func setCausticTuning(scale: Float, speed: Float, intensity: Float, angle: Float) {
+        guard scale != causticScale || speed != causticSpeed || intensity != causticIntensity
+                || angle != causticAngle else { return }
+        causticScale = scale
+        causticSpeed = speed
+        causticIntensity = intensity
+        causticAngle = angle
+        let packed = Self.packedFaceTuning(scale: scale, speed: speed, intensity: intensity, angle: angle)
+        func tuned(_ materials: [any Material], kind: CausticKind) -> [any Material] {
+            materials.map { base in
+                guard var material = base as? CustomMaterial else { return base }
+                switch kind {
+                case .face: material.custom.value.z = packed
+                case .surface:
+                    material.custom.value.x = 32 / scale
+                    material.custom.value.z = 1.4 * intensity
+                    material.custom.value.w = speed
+                }
+                return material
+            }
+        }
+        for index in materialOverrides.indices {
+            guard let kind = materialOverrides[index].kind else { continue }
+            materialOverrides[index].enabledMaterials = tuned(materialOverrides[index].enabledMaterials, kind: kind)
+            guard causticsEnabled,
+                  var model = materialOverrides[index].entity.components[ModelComponent.self] else { continue }
+            model.materials = tuned(model.materials, kind: kind)
+            materialOverrides[index].entity.components.set(model)
+        }
     }
 
     private func setCausticsEnabled(_ enabled: Bool) {

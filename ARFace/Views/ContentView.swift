@@ -12,7 +12,7 @@ struct ContentView: View {
         Group {
             if bluetooth.isControlMode {
                 ControlTabView()
-            } else if tracker.isSupported {
+            } else {
                 Group {
                     if avatarSession.externalDisplayScene != nil {
                         VStack(spacing: 12) {
@@ -57,13 +57,6 @@ struct ContentView: View {
                     .inspector(isPresented: $avatarSession.showDebug) {
                         DebugInspector(onShowControl: { showBluetooth = true })
                     }
-            } else {
-                ContentUnavailableView(
-                    "Face tracking unavailable",
-                    systemImage: "faceid",
-                    description: Text("This device needs a TrueDepth (Face ID) camera.")
-                )
-                .safeAreaInset(edge: .bottom) { bluetoothButton.padding() }
             }
         }
         .sheet(isPresented: $showBluetooth) { BluetoothControlView(showsDone: true) }
@@ -71,7 +64,7 @@ struct ContentView: View {
             tracker.setDebugEnabled(avatarSession.showDebug)
             if !bluetooth.isControlMode {
                 tracker.start()
-                if tracker.isSupported { avatarSession.audioMonitor.start() }
+                avatarSession.audioMonitor.start()
             }
         }
         .onDisappear {
@@ -87,7 +80,7 @@ struct ContentView: View {
                 avatarSession.audioMonitor.stop()
             } else if scenePhase == .active {
                 tracker.start()
-                if tracker.isSupported { avatarSession.audioMonitor.start() }
+                avatarSession.audioMonitor.start()
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -97,12 +90,6 @@ struct ContentView: View {
             } else if phase == .active, !bluetooth.isControlMode {
                 tracker.start()
             }
-        }
-    }
-
-    private var bluetoothButton: some View {
-        Button("Control", systemImage: "antenna.radiowaves.left.and.right") {
-            showBluetooth = true
         }
     }
 

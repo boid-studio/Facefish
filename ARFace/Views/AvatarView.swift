@@ -154,10 +154,6 @@ struct AvatarView: View {
                         .shadow(color: .cyan.opacity(0.45), radius: 22)
                         .accessibilityHidden(true)
 
-                    Text("Facefish")
-                        .font(.system(size: 30, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-
                     ProgressView()
                         .tint(.cyan)
                         .padding(.top, 8)

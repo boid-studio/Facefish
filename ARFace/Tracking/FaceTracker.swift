@@ -59,24 +59,8 @@ nonisolated private final class FaceSessionReceiver: NSObject, ARSessionDelegate
     let cameraThumbnailData = Mutex<Data?>(nil)
     private let lastThumbnailTimestamp = Mutex<TimeInterval>(-.infinity)
     private let imageContext = CIContext()
-    /// With -logFPS: camera frames and face updates per second, and the phone's heat (ARKit slows
-    /// tracking down when the phone runs hot).
-    private static let logRates = ProcessInfo.processInfo.arguments.contains("-logFPS")
-    private let rateCounts = Mutex<(start: TimeInterval, frames: Int, faces: Int)>((0, 0, 0))
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        if Self.logRates {
-            rateCounts.withLock { counts in
-                counts.frames += 1
-                let elapsed = frame.timestamp - counts.start
-                guard elapsed >= 1 else { return }
-                if counts.start > 0 {
-                    let thermal = ["nominal", "fair", "serious", "critical"][ProcessInfo.processInfo.thermalState.rawValue]
-                    print("[track] camera \(Int((Double(counts.frames) / elapsed).rounded())) fps, face \(Int((Double(counts.faces) / elapsed).rounded()))/s, thermal \(thermal)")
-                }
-                counts = (frame.timestamp, 0, 0)
-            }
-        }
         guard debugEnabled.withLock({ $0 }) else { return }
 
         let shouldCapture = lastThumbnailTimestamp.withLock { timestamp in
@@ -101,7 +85,6 @@ nonisolated private final class FaceSessionReceiver: NSObject, ARSessionDelegate
               let camera = session.currentFrame?.camera else { return }
         let cameraTransform = simd_inverse(camera.viewMatrix(for: .portrait))
         let state = FaceState(anchor: face, cameraTransform: cameraTransform)
-        if Self.logRates, face.isTracked { rateCounts.withLock { $0.faces += 1 } }
         latestFace.withLock { $0 = state }
     }
 
