@@ -31,6 +31,7 @@ struct RenderingDebugSection: View {
         }
 
         // Laughing needs a smile, plus squinting eyes or a jaw/voice "ha-ha" rhythm.
+        Toggle("Laugh detection", isOn: $model.laughDetectionEnabled)
         VStack(alignment: .leading, spacing: 4) {
             LabeledContent("Laugh") {
                 Text("\(Int(model.laughReadout.intensity * 100))%")

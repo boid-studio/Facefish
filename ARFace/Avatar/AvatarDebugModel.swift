@@ -58,6 +58,8 @@ final class AvatarDebugModel {
     var cameraZ: Float = 0.75
     /// 0 = natural, 1 = big stage acting (AvatarController; set from the control app too).
     var acting: Float = 0
+    /// Spotting laughter and playing it bigger (LaughDetector). Off: not reliable enough yet.
+    var laughDetectionEnabled = false
     var causticsEnabled = true
     /// Multipliers on the caustic pattern size and animation speed (1 = default).
     var causticScale: Float = 1

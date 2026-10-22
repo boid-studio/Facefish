@@ -246,7 +246,12 @@ final class AvatarController {
 
         // Laughing: the fish laughs bigger (see laughed(_:_:)), in time with each "ha".
         let frameDelta = Float(min(deltaTime, 0.1))
-        laugh.update(weights: isTracked ? lastBlendShapes : nil, voice: audio.overall, deltaTime: frameDelta)
+        // Off by default (AvatarDebugModel.laughDetectionEnabled): it wasn't reliable enough yet.
+        if AvatarSession.shared.avatarDebug.laughDetectionEnabled {
+            laugh.update(weights: isTracked ? lastBlendShapes : nil, voice: audio.overall, deltaTime: frameDelta)
+        } else {
+            laugh = LaughDetector()
+        }
         laughing = laugh.intensity * presence
 
         // Singing a big note: a loud voice through an open mouth. Played bigger with Acting.
