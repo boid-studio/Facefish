@@ -89,6 +89,19 @@ struct RenderingDebugSection: View {
             Slider(value: $model.causticAngle, in: -60...60, step: 5) { Text("Caustic angle") }
         }
         Toggle("Ambient bubbles", isOn: $model.ambientBubblesEnabled)
+        Toggle("Water surface", isOn: $model.waterSurfaceEnabled)
+        VStack(alignment: .leading) {
+            LabeledContent("Slosh") {
+                Text("\(model.sloshGain, specifier: "%.2f")").monospacedDigit()
+            }
+            Slider(value: $model.sloshGain, in: 0...2) { Text("Slosh") }
+        }
+        VStack(alignment: .leading) {
+            LabeledContent("Water level") {
+                Text("\(Int((1 - model.waterLevel) * 100))% up").monospacedDigit()
+            }
+            Slider(value: $model.waterLevel, in: 0.02...0.4) { Text("Water level") }
+        }
         Toggle("Mouth bubbles", isOn: $model.mouthBubblesEnabled)
         Toggle("Audio bubbles", isOn: $model.audioBubblesEnabled)
         Toggle("Animated spotlights", isOn: $model.spotlightsEnabled)

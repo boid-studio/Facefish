@@ -76,6 +76,12 @@ final class AvatarDebugModel {
     var eyelidsEnabled = true
     var swimMotionEnabled = true
     var headFollowEnabled = true
+    /// The water surface near the top, sloshing with the phone (WaterSurface; set from the control app too).
+    var waterSurfaceEnabled = !ProcessInfo.processInfo.arguments.contains("-noWater")
+    /// How strongly the water reacts to the phone moving: 0 = still, 1 = as designed, 2 = wild.
+    var sloshGain: Float = 1
+    /// Where the still water sits, from the top of the screen (0.2 = 80% up).
+    var waterLevel: Float = 0.2
 
     var renderOptions: AvatarRenderOptions {
         AvatarRenderOptions(

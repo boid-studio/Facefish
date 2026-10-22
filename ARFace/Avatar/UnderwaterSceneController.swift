@@ -134,6 +134,23 @@ final class BubbleSphereSystem {
         parent.isEnabled = enabled
     }
 
+    /// Removes the bubbles `shouldPop` picks (given world position and radius) and returns where
+    /// they were: bubbles reaching the water surface pop there.
+    func pop(where shouldPop: (SIMD4<Float>) -> Bool) -> [SIMD3<Float>] {
+        guard parent.isEnabledInHierarchy else { return [] }
+        var popped: [SIMD3<Float>] = []
+        for index in bubbles.indices where bubbles[index].entity.isEnabled {
+            let entity = bubbles[index].entity
+            let axis = entity.transformMatrix(relativeTo: nil).columns.0
+            let position = entity.position(relativeTo: nil)
+            if shouldPop(SIMD4(position, simd_length(SIMD3(axis.x, axis.y, axis.z)))) {
+                entity.isEnabled = false
+                popped.append(position)
+            }
+        }
+        return popped
+    }
+
     func update(deltaTime: TimeInterval, emissionRate: Float = 0, time: Float = 0) {
         guard deltaTime.isFinite, deltaTime > 0 else { return }
         let dt = Float(min(deltaTime, 0.1))
@@ -243,6 +260,11 @@ final class UnderwaterSceneController {
     private var shadowsEnabled = true
 
     var glassSpheres: [SIMD4<Float>] { ambientBubbles?.glassSpheres ?? [] }
+
+    /// Pops the rising bubbles `shouldPop` picks (at the water surface); returns where they were.
+    func popBubbles(where shouldPop: (SIMD4<Float>) -> Bool) -> [SIMD3<Float>] {
+        ambientBubbles?.pop(where: shouldPop) ?? []
+    }
 
     init(scene: Entity, screenSpaceGlass: Bool = false) {
         if library == nil {

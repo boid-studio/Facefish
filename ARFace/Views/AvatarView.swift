@@ -16,6 +16,7 @@ struct AvatarView: View {
     @State private var sceneID = UUID()
     @State private var debugOwnerID = UUID()
     @State private var glassFrame = GlassBubbleFrame()
+    @State private var water = WaterSurfaceDriver()
 
     private var avatarDebug: AvatarDebugModel { AvatarSession.shared.avatarDebug }
 
@@ -74,6 +75,34 @@ struct AvatarView: View {
                             spheres: underwater.glassSpheres + controller.glassSpheres,
                             cameraZ: camera.position.z
                         )
+                        var surface = water.frame(
+                            deltaTime: Float(min(event.deltaTime, 0.1)),
+                            enabled: avatarDebug.waterSurfaceEnabled,
+                            gain: avatarDebug.sloshGain,
+                            level: avatarDebug.waterLevel
+                        )
+                        if let line = surface {
+                            // Bubbles pop when they reach the surface, leaving a ripple there.
+                            let aspect = glassFrame.aspect
+                            let tanHalf = tan(camera.camera.fieldOfViewInDegrees * .pi / 360)
+                            let screen = { (sphere: SIMD4<Float>) -> SIMD2<Float>? in
+                                let distance = camera.position.z - sphere.z
+                                guard distance > 0.05 else { return nil }
+                                let half = distance * tanHalf
+                                return [0.5 + sphere.x / (2 * half * aspect), 0.5 - (sphere.y + sphere.w) / (2 * half)]
+                            }
+                            let reachesSurface = { (sphere: SIMD4<Float>) -> Bool in
+                                guard let uv = screen(sphere) else { return false }
+                                return uv.y < line.lineY(atScreenX: uv.x, aspect: aspect)
+                            }
+                            let popped = underwater.popBubbles(where: reachesSurface) + controller.popBubbles(where: reachesSurface)
+                            for position in popped.prefix(8) {
+                                guard let uv = screen(SIMD4(position, 0)) else { continue }
+                                let depth = min(max(0.3 - position.z * 1.5, 0), 1)
+                                surface?.drops.append([uv.x, depth, 2, 0.5])
+                            }
+                        }
+                        glassFrame.update(water: surface)
                     }
                 }
                 self.controller = controller
@@ -125,6 +154,7 @@ struct AvatarView: View {
             avatarDebug.detach(owner: debugOwnerID)
             controller = nil
             glassFrame.update(spheres: [], cameraZ: 0)
+            glassFrame.update(water: nil)
         }
     }
 

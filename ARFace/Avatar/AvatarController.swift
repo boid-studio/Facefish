@@ -112,6 +112,11 @@ final class AvatarController {
 
     var glassSpheres: [SIMD4<Float>] { mouthBubbleSpheres?.glassSpheres ?? [] }
 
+    /// Pops the fish's bubbles `shouldPop` picks (at the water surface); returns where they were.
+    func popBubbles(where shouldPop: (SIMD4<Float>) -> Bool) -> [SIMD3<Float>] {
+        mouthBubbleSpheres?.pop(where: shouldPop) ?? []
+    }
+
     init(model: Entity, targetSize: Float = 0.25, screenSpaceGlass: Bool = false) {
         finRig = FinRig(model: model)
         eyeRig = EyeRig(model: model)

@@ -32,6 +32,8 @@ struct ARFaceApp: App {
                         case .puckerPriority(let v): calibration.puckerPriority = min(max(v, 0), 1)
                         case .cameraZ(let v): AvatarSession.shared.avatarDebug.cameraZ = min(max(v, 0.1), 3)
                         case .acting(let v): AvatarSession.shared.avatarDebug.acting = min(max(v, 0), 1)
+                        case .waterSurface(let on): AvatarSession.shared.avatarDebug.waterSurfaceEnabled = on
+                        case .slosh(let v): AvatarSession.shared.avatarDebug.sloshGain = min(max(v, 0), 2)
                         }
                     }
                 }
