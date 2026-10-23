@@ -90,6 +90,7 @@ private struct ExternalCanvasView: View {
         }
         .ignoresSafeArea()
         .background(.black)
+        .modifier(CanvasOrientationEffect(isUpsideDown: avatarSession.externalDisplayUpsideDown))
         .persistentSystemOverlays(.hidden)
     }
 }

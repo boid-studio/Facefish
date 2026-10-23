@@ -27,6 +27,7 @@ struct RemoteSettingsView: View {
     @State private var bluetooth = BluetoothControl.shared
     @AppStorage("remote.mirror") private var mirror = true
     @AppStorage("remote.phoneOrientation") private var phoneOrientation = PhoneOrientation.automatic
+    @AppStorage("remote.externalDisplayUpsideDown") private var externalDisplayUpsideDown = false
     @AppStorage("remote.faceCalibration") private var faceCalibration = true
     @AppStorage("remote.lipSeal") private var lipSeal = 0.75
     @AppStorage("remote.puckerPriority") private var puckerPriority = 1.0
@@ -56,6 +57,14 @@ struct RemoteSettingsView: View {
                         }
                     }
                     .onChange(of: phoneOrientation) { _, v in bluetooth.send(.phoneOrientation(v)) }
+                }
+                Section {
+                    Toggle("External display upside down", isOn: $externalDisplayUpsideDown)
+                        .onChange(of: externalDisplayUpsideDown) { _, v in bluetooth.send(.externalDisplayUpsideDown(v)) }
+                } header: {
+                    Text("External display")
+                } footer: {
+                    Text("Rotates only the external image by 180 degrees. Independent of phone orientation; either or both can be upside down.")
                 }
                 Section {
                     centerFaceButton
@@ -180,6 +189,7 @@ struct RemoteSettingsView: View {
     private func sendAll() {
         bluetooth.send(.mirror(mirror))
         bluetooth.send(.phoneOrientation(phoneOrientation))
+        bluetooth.send(.externalDisplayUpsideDown(externalDisplayUpsideDown))
         bluetooth.send(.faceCalibration(faceCalibration))
         bluetooth.send(.lipSeal(Float(lipSeal)))
         bluetooth.send(.puckerPriority(Float(puckerPriority)))

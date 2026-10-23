@@ -28,6 +28,7 @@ struct ARFaceApp: App {
                         case .centerFace: calibration.beginCapture()
                         case .mirror(let on): AvatarSession.shared.mirrored = on
                         case .phoneOrientation(let orientation): AvatarSession.shared.tracker.phoneOrientation = orientation
+                        case .externalDisplayUpsideDown(let on): AvatarSession.shared.externalDisplayUpsideDown = on
                         case .faceCalibration(let on): calibration.enabled = on
                         case .lipSeal(let v): calibration.lipSeal = min(max(v, 0), 1)
                         case .puckerPriority(let v): calibration.puckerPriority = min(max(v, 0), 1)
@@ -51,6 +52,11 @@ final class AvatarSession {
     let avatarDebug = AvatarDebugModel()
     var mirrored = true
     var showDebug = false
+    var externalDisplayUpsideDown = UserDefaults.standard.bool(forKey: "externalDisplay.upsideDown") {
+        didSet {
+            UserDefaults.standard.set(externalDisplayUpsideDown, forKey: "externalDisplay.upsideDown")
+        }
+    }
     /// Moves asked for (the buttons, later the companion), taken by the avatar in
     /// order; asks while a move is running are dropped.
     var pendingMoves: [SwimMove] = []

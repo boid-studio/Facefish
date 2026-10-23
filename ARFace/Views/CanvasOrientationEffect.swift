@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Rotate the finished canvas, including RealityKit's background and post-processing.
-/// Do not depend on UIKit supporting upside-down portrait on a particular device.
-struct PhoneOrientationEffect: ViewModifier {
+/// Independent of system orientation support and the display's physical mounting.
+struct CanvasOrientationEffect: ViewModifier {
     let isUpsideDown: Bool
 
     func body(content: Content) -> some View {

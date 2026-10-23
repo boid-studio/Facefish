@@ -60,10 +60,17 @@ struct DebugSettingsList: View {
             Section("Animations", isExpanded: $animationsExpanded) {
                 AnimationsDebugSection(model: avatarSession.avatarDebug)
             }
-            if let scene = avatarSession.externalDisplayScene {
-                Section("External display", isExpanded: $externalDisplayExpanded) {
-                    ExternalDisplayDebugSection(windowScene: scene)
+            Section {
+                Toggle("External display upside down", isOn: $avatarSession.externalDisplayUpsideDown)
+                if let scene = avatarSession.externalDisplayScene {
+                    DisclosureGroup("Display diagnostics", isExpanded: $externalDisplayExpanded) {
+                        ExternalDisplayDebugSection(windowScene: scene)
+                    }
                 }
+            } header: {
+                Text("External display")
+            } footer: {
+                Text("Rotates only the external image by 180 degrees. Independent of phone orientation; either or both can be upside down.")
             }
         }
     }

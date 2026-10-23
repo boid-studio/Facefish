@@ -59,7 +59,8 @@ icons stay fixed at the bottom of the phone and do not rotate. This is an in-app
 rotation, so it also works on devices that do not support upside-down system
 orientation and with system orientation lock enabled. Orientation detection runs
 without a tracked face and pauses while the app is inactive. The external display
-stays upright independently of the phone's mounting. Settings sheets and the
+stays upright independently of the phone's mounting unless its separate
+**External display upside down** toggle is enabled. Settings sheets and the
 Bluetooth controller retain their normal system orientation. The Bluetooth
 controller's **Settings** tab can change the main phone's orientation setting,
 including through **Send all settings**.
@@ -69,12 +70,13 @@ To check orientation detection and pose/motion correction on a Mac, run:
 ```sh
 swiftc ARFace/Tracking/PhoneOrientation.swift Tests/PhoneOrientationChecks.swift -o /tmp/PhoneOrientationChecks
 /tmp/PhoneOrientationChecks
-swiftc ARFace/Views/PhoneOrientationEffect.swift Tests/PhoneCanvasRenderingChecks.swift -o /tmp/PhoneCanvasRenderingChecks
+swiftc ARFace/Views/CanvasOrientationEffect.swift Tests/PhoneCanvasRenderingChecks.swift -o /tmp/PhoneCanvasRenderingChecks
 /tmp/PhoneCanvasRenderingChecks
 ```
 
-The canvas rendering check verifies an actual non-square SwiftUI render, including
-the background, avatar placeholder, and overlays, in both mounting orientations.
+The canvas rendering check verifies actual square, portrait, and landscape SwiftUI
+renders, including the background, avatar placeholder, and overlays, in both
+mounting orientations at 1x, 2x, and 3x scales.
 
 On a TrueDepth device, check both portrait mountings in Automatic and manual
 modes, including head turns, nods, tilts, Mirror on/off, the camera preview,
@@ -169,6 +171,24 @@ No camera or face-tracking device is required for these checks.
 
 ## External display
 
+If the external panel is mounted upside down, enable **Settings > External display >
+External display upside down** on the phone. This rotates the complete external
+image by 180 degrees, including the fish, underwater background, water, bubbles,
+and loading content. It does not change the phone's canvas, controls, or
+face-tracking orientation. The toggle defaults to off, is saved between launches,
+and can be set before connecting a display. It also appears in the Bluetooth
+controller's **Settings** tab and is included in **Send all settings**.
+The panel's physical mounting cannot be detected automatically from the phone.
+Phone orientation and external display orientation are separate controls: either
+device, or both, can be upside down. The external display section is always
+available, even before a display is connected; diagnostics appear when connected.
+The phone's settings button remains available while loading and while an external
+display is connected.
+
+With a physical display connected, verify both toggle positions for each phone
+mounting, check that background and fish turn together without moving phone
+controls, and confirm the choice survives disconnect/reconnect and app relaunch.
+
 When an external display connects, the app attempts to select a square display
 mode, preferring 1080 × 1080 or the available square mode closest to that size.
 If no square mode is available, it leaves the current mode unchanged. The avatar
@@ -198,7 +218,8 @@ expanded state between launches:
 - **Animations** lets you filter the avatar's animations, play one once, loop it,
   or stop all animations. When connected to an external display, these controls
   operate on the externally rendered avatar.
-- **External display**, shown only while connected, reports screen and scene
+- **External display** always provides the independent upside-down toggle.
+  While connected, expand **Display diagnostics** for screen and scene
   geometry, native dimensions and aspect ratio, display scales, refresh rate,
   current, available, and preferred modes, and overscan settings. Choose an
   available resolution with the picker or use **Auto-select square (1080x1080)**.

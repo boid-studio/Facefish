@@ -1,7 +1,7 @@
 import CoreGraphics
 import SwiftUI
 
-// swiftc ARFace/Views/PhoneOrientationEffect.swift Tests/PhoneCanvasRenderingChecks.swift -o /tmp/PhoneCanvasRenderingChecks
+// swiftc ARFace/Views/CanvasOrientationEffect.swift Tests/PhoneCanvasRenderingChecks.swift -o /tmp/PhoneCanvasRenderingChecks
 // /tmp/PhoneCanvasRenderingChecks
 @main
 @MainActor
@@ -26,7 +26,7 @@ struct PhoneCanvasRenderingChecks {
             Color.yellow.frame(width: 20, height: 20)
         }
         .frame(width: CGFloat(width), height: CGFloat(height))
-        .modifier(PhoneOrientationEffect(isUpsideDown: isUpsideDown))
+        .modifier(CanvasOrientationEffect(isUpsideDown: isUpsideDown))
         .overlay(alignment: .bottomTrailing) {
             if showsControls {
                 Color.black.frame(width: 12, height: 12)
@@ -103,7 +103,7 @@ struct PhoneCanvasRenderingChecks {
     }
 
     static func main() {
-        for (width, height) in [(120, 200), (200, 260)] {
+        for (width, height) in [(120, 200), (200, 260), (200, 200), (320, 180)] {
             for scale in 1...3 {
                 check(width: width, height: height, scale: scale)
             }

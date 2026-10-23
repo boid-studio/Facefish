@@ -50,9 +50,9 @@ struct ContentView: View {
                             CameraDebugView(tracker: tracker).padding(.top, 48).padding(.trailing, 12)
                         }
                     }
-                    .modifier(PhoneOrientationEffect(isUpsideDown: tracker.isPhoneUpsideDown))
+                    .modifier(CanvasOrientationEffect(isUpsideDown: tracker.isPhoneUpsideDown))
                     .overlay(alignment: .bottomTrailing) {
-                        if isAvatarReady { settingsButton }
+                        settingsButton
                     }
                     .overlay(alignment: .bottomLeading) {
                         if isAvatarReady { moveButtons }

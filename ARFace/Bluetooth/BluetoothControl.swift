@@ -33,6 +33,7 @@ enum RemoteSetting: Codable, Equatable {
     case centerFace
     case mirror(Bool)
     case phoneOrientation(PhoneOrientation)
+    case externalDisplayUpsideDown(Bool)
     case faceCalibration(Bool)
     case lipSeal(Float)
     case puckerPriority(Float)
@@ -49,6 +50,7 @@ enum RemoteSetting: Codable, Equatable {
         case .centerFace: "centerFace"
         case .mirror: "mirror"
         case .phoneOrientation: "phoneOrientation"
+        case .externalDisplayUpsideDown: "externalDisplayUpsideDown"
         case .faceCalibration: "faceCalibration"
         case .lipSeal: "lipSeal"
         case .puckerPriority: "puckerPriority"
@@ -64,6 +66,7 @@ enum RemoteSetting: Codable, Equatable {
         case .centerFace: "Center face"
         case .mirror(let on): "Mirror \(on ? "on" : "off")"
         case .phoneOrientation(let orientation): "Phone orientation: \(orientation.title)"
+        case .externalDisplayUpsideDown(let on): "External display upside down \(on ? "on" : "off")"
         case .faceCalibration(let on): "Face calibration \(on ? "on" : "off")"
         case .lipSeal(let v): "Lip seal \(String(format: "%.2f", v))"
         case .puckerPriority(let v): "Pucker priority \(String(format: "%.2f", v))"
