@@ -13,29 +13,31 @@ struct ContentView: View {
             if bluetooth.isControlMode {
                 ControlTabView()
             } else {
-                Group {
-                    if avatarSession.externalDisplayScene != nil {
-                        VStack(spacing: 12) {
-                            Image(systemName: "display")
-                                .font(.largeTitle)
-                            Text("External display connected")
-                                .font(.headline)
-                            Text("Face tracking is active. The avatar is rendered only on the external display.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
+                // Poll independently of AR frames: orientation must work without a tracked face.
+                TimelineView(.animation(minimumInterval: 0.1, paused: scenePhase != .active)) { _ in
+                    Group {
+                        if avatarSession.externalDisplayScene != nil {
+                            VStack(spacing: 12) {
+                                Image(systemName: "display")
+                                    .font(.largeTitle)
+                                Text("External display connected")
+                                    .font(.headline)
+                                Text("Face tracking is active. The avatar is rendered only on the external display.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .padding(24)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(.black)
+                        } else {
+                            AvatarView(
+                                tracker: tracker,
+                                mirrored: avatarSession.mirrored,
+                                isReady: $isAvatarReady
+                            )
                         }
-                        .padding(24)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(.black)
-                    } else {
-                        AvatarView(
-                            tracker: tracker,
-                            mirrored: avatarSession.mirrored,
-                            isReady: $isAvatarReady
-                        )
                     }
-                }
                     .ignoresSafeArea()
                     .overlay(alignment: .top) {
                         if isAvatarReady { TrackingStatusBanner(tracker: tracker) }
@@ -48,15 +50,17 @@ struct ContentView: View {
                             CameraDebugView(tracker: tracker).padding(.top, 48).padding(.trailing, 12)
                         }
                     }
+                    .modifier(PhoneOrientationEffect(isUpsideDown: tracker.isPhoneUpsideDown))
                     .overlay(alignment: .bottomTrailing) {
                         if isAvatarReady { settingsButton }
                     }
                     .overlay(alignment: .bottomLeading) {
                         if isAvatarReady { moveButtons }
                     }
-                    .inspector(isPresented: $avatarSession.showDebug) {
-                        DebugInspector(onShowControl: { showBluetooth = true })
-                    }
+                }
+                .inspector(isPresented: $avatarSession.showDebug) {
+                    DebugInspector(onShowControl: { showBluetooth = true })
+                }
             }
         }
         .background { ExternalDisplayAccessoryRegistrar().frame(width: 0, height: 0) }

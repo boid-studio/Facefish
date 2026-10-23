@@ -47,6 +47,15 @@ struct PhoneOrientationChecks {
                             let corrected = resolver.corrected(rotation: raw)
                             precondition(abs(simd_dot(corrected.vector, intended.vector)) > 0.99999,
                                          "Correction must preserve yaw, pitch and roll in the face's local axes.")
+                            let canvas = correctedMount ? mounting : simd_quatf(angle: 0, axis: [0, 0, 1])
+                            // The local canvas turns with the mounting; the external canvas does not.
+                            let physicalPhone = simd_inverse(canvas) * canvas * corrected
+                            precondition(abs(simd_dot(physicalPhone.vector, intended.vector)) > 0.99999,
+                                         "The physical phone and external display must show the same head pose.")
+                            let backgroundUp = SIMD3<Float>(0, 1, 0)
+                            let physicalBackgroundUp = simd_inverse(canvas).act(canvas.act(backgroundUp))
+                            precondition(simd_distance(physicalBackgroundUp, backgroundUp) < 0.00001,
+                                         "The background must remain physically upright with the fish.")
                         }
                     }
                 }

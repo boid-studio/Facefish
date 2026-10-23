@@ -52,8 +52,15 @@ it assumes upright.
 
 Choose **Upright** or **Upside down** to lock the mounting orientation manually.
 The choice is saved between launches and applies to face tracking on both the
-phone and external display, the debug camera preview, and water motion. It does
-not rotate the app's controls or the entire underwater scene. The Bluetooth
+phone and external display, the debug camera preview, and water motion. On the
+phone, the entire avatar canvas rotates together: fish, underwater background,
+water, bubbles, loading/error content, and tracking overlays. Settings and action
+icons stay fixed at the bottom of the phone and do not rotate. This is an in-app
+rotation, so it also works on devices that do not support upside-down system
+orientation and with system orientation lock enabled. Orientation detection runs
+without a tracked face and pauses while the app is inactive. The external display
+stays upright independently of the phone's mounting. Settings sheets and the
+Bluetooth controller retain their normal system orientation. The Bluetooth
 controller's **Settings** tab can change the main phone's orientation setting,
 including through **Send all settings**.
 
@@ -62,12 +69,19 @@ To check orientation detection and pose/motion correction on a Mac, run:
 ```sh
 swiftc ARFace/Tracking/PhoneOrientation.swift Tests/PhoneOrientationChecks.swift -o /tmp/PhoneOrientationChecks
 /tmp/PhoneOrientationChecks
+swiftc ARFace/Views/PhoneOrientationEffect.swift Tests/PhoneCanvasRenderingChecks.swift -o /tmp/PhoneCanvasRenderingChecks
+/tmp/PhoneCanvasRenderingChecks
 ```
+
+The canvas rendering check verifies an actual non-square SwiftUI render, including
+the background, avatar placeholder, and overlays, in both mounting orientations.
 
 On a TrueDepth device, check both portrait mountings in Automatic and manual
 modes, including head turns, nods, tilts, Mirror on/off, the camera preview,
-water motion, and external-display output. Check that the setting survives
-relaunch and can be changed from the Bluetooth controller.
+water motion, and external-display output. Verify that the entire phone background
+turns with the fish, including with system orientation lock enabled, while tracking
+is lost, and after backgrounding/foregrounding. Check that the setting survives
+relaunch and can be changed from the Bluetooth controller. Repeat on iPhone and iPad.
 
 ### Audio-reactive bubbles (proof of concept)
 
