@@ -38,6 +38,30 @@ final class ExternalDisplaySceneDelegate: NSObject, UIWindowSceneDelegate {
     }
 }
 
+/// From iOS 27 the system only connects the external display scene after the app registers a
+/// scene accessory from a view controller in its main interface; without it the display just mirrors.
+/// Earlier releases connect the scene automatically via the Info.plist manifest / AppDelegate.
+struct ExternalDisplayAccessoryRegistrar: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> RegistrarViewController {
+        RegistrarViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: RegistrarViewController, context: Context) {}
+
+    final class RegistrarViewController: UIViewController {
+        private var registration: AnyObject?
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.isUserInteractionEnabled = false
+            guard #available(iOS 27.0, *) else { return }
+            let configuration = UISceneConfiguration(name: nil, sessionRole: .windowExternalDisplayNonInteractive)
+            configuration.delegateClass = ExternalDisplaySceneDelegate.self
+            registration = registerSceneAccessory(.externalNonInteractive(sceneConfiguration: configuration))
+        }
+    }
+}
+
 private struct ExternalCanvasView: View {
     @State private var avatarSession = AvatarSession.shared
     @State private var bluetooth = BluetoothControl.shared

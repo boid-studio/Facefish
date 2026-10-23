@@ -72,6 +72,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             name: nil,
             sessionRole: connectingSceneSession.role
         )
+        // Pre-iOS 27 path; on iOS 27+ the scene comes from ExternalDisplayAccessoryRegistrar.
         if connectingSceneSession.role == .windowExternalDisplayNonInteractive {
             configuration.delegateClass = ExternalDisplaySceneDelegate.self
         }

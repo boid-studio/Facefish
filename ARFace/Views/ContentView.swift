@@ -59,6 +59,7 @@ struct ContentView: View {
                     }
             }
         }
+        .background { ExternalDisplayAccessoryRegistrar().frame(width: 0, height: 0) }
         .sheet(isPresented: $showBluetooth) { BluetoothControlView(showsDone: true) }
         .onAppear {
             tracker.setDebugEnabled(avatarSession.showDebug)
