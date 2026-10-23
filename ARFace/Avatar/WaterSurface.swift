@@ -134,6 +134,7 @@ final class WaterSurfaceDriver {
         guard enabled else { return nil }
         surface.gain = gain
         surface.level = level
-        return surface.update(deltaTime: deltaTime, motion: MotionTracker.shared.latest)
+        let motion = MotionTracker.shared.latest.map { AvatarSession.shared.tracker.correctedMotion($0) }
+        return surface.update(deltaTime: deltaTime, motion: motion)
     }
 }

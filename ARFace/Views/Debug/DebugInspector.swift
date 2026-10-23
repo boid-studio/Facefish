@@ -17,6 +17,7 @@ struct DebugInspector: View {
 /// All app settings. Shared by the debug inspector and the control app's Settings tab.
 struct DebugSettingsList: View {
     @State private var avatarSession = AvatarSession.shared
+    @Bindable private var tracker = AvatarSession.shared.tracker
     /// When nil, the "Control" shortcut is hidden.
     var onShowControl: (() -> Void)?
 
@@ -31,6 +32,11 @@ struct DebugSettingsList: View {
         List {
             Section("General") {
                 Toggle("Mirror", systemImage: "arrow.left.and.right", isOn: $avatarSession.mirrored)
+                Picker("Phone orientation", selection: $tracker.phoneOrientation) {
+                    ForEach(PhoneOrientation.allCases) { orientation in
+                        Text(orientation.title).tag(orientation)
+                    }
+                }
                 if let onShowControl {
                     Button("Control", systemImage: "antenna.radiowaves.left.and.right", action: onShowControl)
                 }

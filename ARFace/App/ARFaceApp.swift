@@ -27,6 +27,7 @@ struct ARFaceApp: App {
                         switch setting {
                         case .centerFace: calibration.beginCapture()
                         case .mirror(let on): AvatarSession.shared.mirrored = on
+                        case .phoneOrientation(let orientation): AvatarSession.shared.tracker.phoneOrientation = orientation
                         case .faceCalibration(let on): calibration.enabled = on
                         case .lipSeal(let v): calibration.lipSeal = min(max(v, 0), 1)
                         case .puckerPriority(let v): calibration.puckerPriority = min(max(v, 0), 1)

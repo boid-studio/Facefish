@@ -36,6 +36,7 @@ struct CameraDebugView: View {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
+                        .rotationEffect(.degrees(tracker.isPhoneUpsideDown ? 180 : 0))
                 } else {
                     Image(systemName: "camera")
                         .font(.title3)

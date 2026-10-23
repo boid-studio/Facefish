@@ -26,6 +26,7 @@ struct ControlTabView: View {
 struct RemoteSettingsView: View {
     @State private var bluetooth = BluetoothControl.shared
     @AppStorage("remote.mirror") private var mirror = true
+    @AppStorage("remote.phoneOrientation") private var phoneOrientation = PhoneOrientation.automatic
     @AppStorage("remote.faceCalibration") private var faceCalibration = true
     @AppStorage("remote.lipSeal") private var lipSeal = 0.75
     @AppStorage("remote.puckerPriority") private var puckerPriority = 1.0
@@ -49,6 +50,12 @@ struct RemoteSettingsView: View {
                 Section("General") {
                     Toggle("Mirror", systemImage: "arrow.left.and.right", isOn: $mirror)
                         .onChange(of: mirror) { _, v in bluetooth.send(.mirror(v)) }
+                    Picker("Phone orientation", selection: $phoneOrientation) {
+                        ForEach(PhoneOrientation.allCases) { orientation in
+                            Text(orientation.title).tag(orientation)
+                        }
+                    }
+                    .onChange(of: phoneOrientation) { _, v in bluetooth.send(.phoneOrientation(v)) }
                 }
                 Section {
                     centerFaceButton
@@ -172,6 +179,7 @@ struct RemoteSettingsView: View {
 
     private func sendAll() {
         bluetooth.send(.mirror(mirror))
+        bluetooth.send(.phoneOrientation(phoneOrientation))
         bluetooth.send(.faceCalibration(faceCalibration))
         bluetooth.send(.lipSeal(Float(lipSeal)))
         bluetooth.send(.puckerPriority(Float(puckerPriority)))

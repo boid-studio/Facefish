@@ -41,6 +41,34 @@ keep their full size until they disappear.
 Close and reopen the mouth to emit another burst. If tracking is lost, the fins
 transition to an idle sway.
 
+### Phone orientation
+
+Open **Settings** (the sliders button), then **General > Phone orientation**.
+**Automatic** is the default: it detects upright or upside-down portrait mounting
+using gravity and keeps the fish upright without changing facial expressions or
+Mirror behavior. When the phone is flat or sideways, it holds the last detected
+orientation rather than flipping unpredictably. Before the first sensor reading,
+it assumes upright.
+
+Choose **Upright** or **Upside down** to lock the mounting orientation manually.
+The choice is saved between launches and applies to face tracking on both the
+phone and external display, the debug camera preview, and water motion. It does
+not rotate the app's controls or the entire underwater scene. The Bluetooth
+controller's **Settings** tab can change the main phone's orientation setting,
+including through **Send all settings**.
+
+To check orientation detection and pose/motion correction on a Mac, run:
+
+```sh
+swiftc ARFace/Tracking/PhoneOrientation.swift Tests/PhoneOrientationChecks.swift -o /tmp/PhoneOrientationChecks
+/tmp/PhoneOrientationChecks
+```
+
+On a TrueDepth device, check both portrait mountings in Automatic and manual
+modes, including head turns, nods, tilts, Mirror on/off, the camera preview,
+water motion, and external-display output. Check that the setting survives
+relaunch and can be changed from the Bluetooth controller.
+
 ### Audio-reactive bubbles (proof of concept)
 
 The app also listens to the microphone (allow microphone access when prompted;

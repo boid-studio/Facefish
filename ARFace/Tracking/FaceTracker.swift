@@ -1,10 +1,21 @@
 import ARKit
+import Observation
 import Synchronization
 import UIKit
 
+@Observable
 final class FaceTracker {
     let isSupported = ARFaceTrackingConfiguration.isSupported
 
+    var phoneOrientation = PhoneOrientation(
+        rawValue: UserDefaults.standard.string(forKey: "tracking.phoneOrientation") ?? ""
+    ) ?? .automatic {
+        didSet {
+            UserDefaults.standard.set(phoneOrientation.rawValue, forKey: "tracking.phoneOrientation")
+        }
+    }
+
+    @ObservationIgnored private var orientationResolver = PhoneOrientationResolver()
     private let session = ARSession()
     private let receiver = FaceSessionReceiver()
     private let delegateQueue = DispatchQueue(label: "ARFace.FaceTracker", qos: .userInteractive)
@@ -40,7 +51,23 @@ final class FaceTracker {
 
     /// Latest face state; safe to call every render frame.
     func snapshot() -> FaceState? {
-        receiver.latestFace.withLock { $0 }
+        guard var state = receiver.latestFace.withLock({ $0 }) else { return nil }
+        orientationResolver.update(mode: phoneOrientation, gravity: MotionTracker.shared.latest?.gravity)
+        state.headRotation = orientationResolver.corrected(rotation: state.headRotation)
+        return state
+    }
+
+    var isPhoneUpsideDown: Bool {
+        orientationResolver.update(mode: phoneOrientation, gravity: MotionTracker.shared.latest?.gravity)
+        return orientationResolver.isUpsideDown
+    }
+
+    func correctedMotion(_ motion: MotionTracker.Reading) -> MotionTracker.Reading {
+        orientationResolver.update(mode: phoneOrientation, gravity: motion.gravity)
+        return MotionTracker.Reading(
+            gravity: orientationResolver.corrected(vector: motion.gravity),
+            acceleration: orientationResolver.corrected(vector: motion.acceleration)
+        )
     }
 
     func cameraThumbnail() -> Data? {
