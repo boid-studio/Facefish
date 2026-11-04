@@ -12,7 +12,14 @@ set -euo pipefail
 BLEND=${1:-/tmp/facefish_export.blend}
 BLENDER=${BLENDER:-/Applications/Blender.app/Contents/MacOS/Blender}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
-BRANCH=${FACEFISH_SCRIPTS_BRANCH:-web}
+# The export scripts' branch: a local `web`, else the remote's (a fresh clone has only origin/web).
+BRANCH=${FACEFISH_SCRIPTS_BRANCH:-}
+if [[ -z "$BRANCH" ]]; then
+    for candidate in web origin/web; do
+        if git -C "$REPO" rev-parse --verify -q "$candidate^{commit}" > /dev/null; then BRANCH=$candidate; break; fi
+    done
+fi
+[[ -n "$BRANCH" ]] || { echo "No web branch with the export scripts: run git fetch origin web" >&2; exit 1; }
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
@@ -42,7 +49,7 @@ echo "Wrote ARFace/Resources/fish.usdz ($(du -h "$REPO/ARFace/Resources/fish.usd
 # What the app looks for, so a renamed or missing part shows up here rather than on stage.
 if command -v usdtree > /dev/null; then
     TREE=$(usdtree "$REPO/ARFace/Resources/fish.usdz" 2>/dev/null)
-    for part in Head TailRig PecRig_L PecRig_R DorsalRig Eye_L Eye_R Eyelid_L Eyelid_R lashesClosed; do
+    for part in Head Brows TailRig PecRig_L PecRig_R DorsalRig Eye_L Eye_R Eyelid_L Eyelid_R lashesClosed; do
         grep -q -- "--$part " <<< "$TREE" || echo "WARNING: no $part in the export" >&2
     done
     echo "Blend shapes: $(grep -c 'BlendShape' <<< "$TREE")"
