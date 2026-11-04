@@ -20,6 +20,8 @@ struct ARFaceApp: App {
                         case .loop: AvatarSession.shared.pendingMoves.append(.loop)
                         case .blush: AvatarSession.shared.pendingMoves.append(.blush)
                         case .blowBubbles: AvatarSession.shared.pendingMoves.append(.bubbles)
+                        case .hide: AvatarSession.shared.pendingMoves.append(.hide)
+                        case .show: AvatarSession.shared.pendingMoves.append(.show)
                         }
                     }
                     BluetoothControl.shared.onSetting = { setting in
@@ -34,8 +36,12 @@ struct ARFaceApp: App {
                         case .puckerPriority(let v): calibration.puckerPriority = min(max(v, 0), 1)
                         case .cameraZ(let v): AvatarSession.shared.avatarDebug.cameraZ = min(max(v, 0.1), 3)
                         case .acting(let v): AvatarSession.shared.avatarDebug.acting = min(max(v, 0), 1)
-                        case .waterSurface(let on): AvatarSession.shared.avatarDebug.waterSurfaceEnabled = on
-                        case .slosh(let v): AvatarSession.shared.avatarDebug.sloshGain = min(max(v, 0), 2)
+                        case .accessory(let accessory, let on):
+                            if on {
+                                AvatarSession.shared.wornAccessories.insert(accessory)
+                            } else {
+                                AvatarSession.shared.wornAccessories.remove(accessory)
+                            }
                         }
                     }
                 }
@@ -60,6 +66,18 @@ final class AvatarSession {
     /// Moves asked for (the buttons, later the companion), taken by the avatar in
     /// order; asks while a move is running are dropped.
     var pendingMoves: [SwimMove] = []
+    /// The fish is backing out of frame or out of sight (HideShow), for the Hide/Show button.
+    var fishHidden = false
+    /// What the fish is wearing (the hat button), kept between launches.
+    var wornAccessories: Set<Accessory> = Set(
+        (UserDefaults.standard.stringArray(forKey: "wornAccessories") ?? []).compactMap(Accessory.init(rawValue:))
+    ) {
+        didSet {
+            UserDefaults.standard.set(wornAccessories.map(\.rawValue).sorted(), forKey: "wornAccessories")
+        }
+    }
+    /// The accessories the loaded fish model has (AvatarController).
+    var availableAccessories: [Accessory] = []
     var externalDisplayScene: UIWindowScene?
 }
 
@@ -67,6 +85,8 @@ final class AvatarSession {
 /// behind its fins and blowing bubbles (SwimTrick).
 enum SwimMove: CaseIterable {
     case lap, spin, loop, blush, bubbles
+    /// Back out of frame and stay hidden, then swim back in (HideShow).
+    case hide, show
 }
 
 final class AppDelegate: NSObject, UIApplicationDelegate {

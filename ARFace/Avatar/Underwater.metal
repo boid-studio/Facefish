@@ -224,10 +224,38 @@ void faceBodyBend(realitykit::geometry_parameters params) {
     params.geometry().set_model_position_offset(float3(offset, 0, 0));
 }
 
-// Strong caustics on the fish's body, projected from a fake water surface above and a little in
-// front, so they land on the front-facing face too, not only the top of the head.
+// The face's caustics, projected from a fake water surface above and a little in front, so they
+// land on the front-facing face too, not only the top of the head. Darkens `baseColor` a little
+// between the lines and returns the light they add, with the water's haze.
+// `tuning` = 0 for no caustics, else packed frequency, speed, intensity and angle (see
+// UnderwaterSceneController).
+static half3 faceCaustics(thread half3 &baseColor, float tuning, float3 position, float3 normal,
+                          half tintScale, float t) {
+    // Mixed-radix unpack of ((freq * 81 + speed) * 61 + intensity) * 25 + angle.
+    float angleStep = fmod(tuning, 25.0);
+    float rest = floor(tuning / 25.0);
+    float intensityStep = fmod(rest, 61.0);
+    rest = floor(rest / 61.0);
+    float speedStep = fmod(rest, 81.0);
+    float freqStep = floor(rest / 81.0);
+    float scale = freqStep * 0.05;
+    float speed = speedStep * 0.05;
+    float strength = tuning > 0.0 ? 4.5 * intensityStep * 0.05 : 0.0;
+    // Light direction: 0 = straight down, positive tilts toward the viewer (5 degree steps).
+    float angle = (angleStep - 12.0) * 0.0872665;
+    float3 toLight = float3(0.0, cos(angle), sin(angle));
+    float2 projected = float2(position.x, position.z - position.y * tan(angle));
+    half3 light = caustics(projected * 22.0 * scale, t * 0.6 * speed, 9.0);   // pattern per metre, focus
+    light = pow(light, half3(0.9)) * half(1.4);          // thick, bright lines
+    float facing = saturate(dot(normal, toLight));
+    half3 emissive = baseColor * light * half3(0.8, 0.97, 1.0) * half(strength * facing);
+    baseColor *= half(1.0 - 0.25 * saturate(strength));  // a little darker between the lines
+    return emissive + waterScatter(position, tintScale, t);
+}
+
+// Strong caustics on the fish's body (faceCaustics).
 // custom_parameter: x = swim bend amplitude, y = bend phase (both for faceBodyBend), w = blush,
-// z = 0 for no caustics, else packed frequency, speed and intensity (see UnderwaterSceneController).
+// z = caustic tuning (faceCaustics).
 [[visible]]
 void faceCausticSurface(realitykit::surface_parameters params) {
     constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
@@ -243,30 +271,7 @@ void faceCausticSurface(realitykit::surface_parameters params) {
     float3 normal = normalize(params.geometry().normal());
     half tintScale = half(dot(float3(material.base_color_tint()), float3(0.333)));
     baseColor = underwaterTint(baseColor, position, tintScale);
-
-    // Mixed-radix unpack of ((freq * 81 + speed) * 61 + intensity) * 25 + angle (see UnderwaterSceneController).
-    float tuning = custom.z;
-    float angleStep = fmod(tuning, 25.0);
-    float rest = floor(tuning / 25.0);
-    float intensityStep = fmod(rest, 61.0);
-    rest = floor(rest / 61.0);
-    float speedStep = fmod(rest, 81.0);
-    float freqStep = floor(rest / 81.0);
-    float scale = freqStep * 0.05;
-    float speed = speedStep * 0.05;
-    float strength = tuning > 0.0 ? 4.5 * intensityStep * 0.05 : 0.0;
-    // Light direction: 0 = straight down, positive tilts toward the viewer (5 degree steps).
-    float angle = (angleStep - 12.0) * 0.0872665;
-    float3 toLight = float3(0.0, cos(angle), sin(angle));
-    float2 projected = float2(position.x, position.z - position.y * tan(angle));
-    float t = params.uniforms().time();
-    half3 light = caustics(projected * 22.0 * scale, t * 0.6 * speed, 9.0);   // pattern per metre, focus
-    light = pow(light, half3(0.9)) * half(1.4);          // thick, bright lines
-    float facing = saturate(dot(normal, toLight));
-    half3 emissive = baseColor * light * half3(0.8, 0.97, 1.0) * half(strength * facing);
-    baseColor *= half(1.0 - 0.25 * saturate(strength));  // a little darker between the lines
-
-    emissive += waterScatter(position, tintScale, t);
+    half3 emissive = faceCaustics(baseColor, custom.z, position, normal, tintScale, params.uniforms().time());
 
     // Blush (custom.w, 0...1): rosy cheeks under the eyes. Model space keeps Blender's axes
     // (+X the fish's left, -Y forward, +Z up); only the front of the face, not the back of the head.
@@ -301,4 +306,34 @@ void faceCausticSurface(realitykit::surface_parameters params) {
     surface.set_ambient_occlusion(tex.ambient_occlusion().sample(s, uv).r);
     surface.set_clearcoat(clearcoat);
     surface.set_clearcoat_roughness(half(0.08));
+}
+
+// Things the fish wears on her face (a mask…): their own colours and finish, lit and tinted like
+// the face with its caustics, and bending with the body as she swims (faceBodyBend), so they stay
+// on. custom_parameter: as faceCausticSurface, without the blush.
+[[visible]]
+void accessorySurface(realitykit::surface_parameters params) {
+    constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
+    auto tex = params.textures();
+    auto material = params.material_constants();
+    float4 custom = params.uniforms().custom_parameter();
+
+    float2 uv = params.geometry().uv0();
+    uv.y = 1.0 - uv.y;
+
+    half3 baseColor = tex.base_color().sample(s, uv).rgb * half3(material.base_color_tint());
+    float3 position = params.geometry().world_position();
+    float3 normal = normalize(params.geometry().normal());
+    half tintScale = half(dot(float3(material.base_color_tint()), float3(0.333)));
+    baseColor = underwaterTint(baseColor, position, tintScale);
+    half3 emissive = faceCaustics(baseColor, custom.z, position, normal, tintScale, params.uniforms().time());
+
+    auto surface = params.surface();
+    surface.set_base_color(baseColor);
+    surface.set_emissive_color(emissive);
+    surface.set_roughness(tex.roughness().sample(s, uv).r * half(material.roughness_scale()));
+    surface.set_metallic(tex.metallic().sample(s, uv).r * half(material.metallic_scale()));
+    surface.set_specular(tex.specular().sample(s, uv).r * half(material.specular_scale()));
+    surface.set_clearcoat(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()));
+    surface.set_clearcoat_roughness(tex.clearcoat_roughness().sample(s, uv).r * half(material.clearcoat_roughness_scale()));
 }

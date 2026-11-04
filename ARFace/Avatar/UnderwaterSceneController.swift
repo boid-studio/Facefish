@@ -134,23 +134,6 @@ final class BubbleSphereSystem {
         parent.isEnabled = enabled
     }
 
-    /// Removes the bubbles `shouldPop` picks (given world position and radius) and returns where
-    /// they were: bubbles reaching the water surface pop there.
-    func pop(where shouldPop: (SIMD4<Float>) -> Bool) -> [SIMD3<Float>] {
-        guard parent.isEnabledInHierarchy else { return [] }
-        var popped: [SIMD3<Float>] = []
-        for index in bubbles.indices where bubbles[index].entity.isEnabled {
-            let entity = bubbles[index].entity
-            let axis = entity.transformMatrix(relativeTo: nil).columns.0
-            let position = entity.position(relativeTo: nil)
-            if shouldPop(SIMD4(position, simd_length(SIMD3(axis.x, axis.y, axis.z)))) {
-                entity.isEnabled = false
-                popped.append(position)
-            }
-        }
-        return popped
-    }
-
     func update(deltaTime: TimeInterval, emissionRate: Float = 0, time: Float = 0) {
         guard deltaTime.isFinite, deltaTime > 0 else { return }
         let dt = Float(min(deltaTime, 0.1))
@@ -261,11 +244,6 @@ final class UnderwaterSceneController {
 
     var glassSpheres: [SIMD4<Float>] { ambientBubbles?.glassSpheres ?? [] }
 
-    /// Pops the rising bubbles `shouldPop` picks (at the water surface); returns where they were.
-    func popBubbles(where shouldPop: (SIMD4<Float>) -> Bool) -> [SIMD3<Float>] {
-        ambientBubbles?.pop(where: shouldPop) ?? []
-    }
-
     init(scene: Entity, screenSpaceGlass: Bool = false) {
         if library == nil {
             logger.error("Metal library unavailable; caustic and fin-ripple shaders are disabled.")
@@ -322,22 +300,25 @@ final class UnderwaterSceneController {
     /// Gives single-part meshes (fins, eyes) the caustic shader. Multi-part USD meshes such as the
     /// subdivided, blend-shaped body don't render with CustomMaterial, so they rely on the dappled lights.
     func applyCaustics(to entity: Entity) {
-        applyCaustics(to: entity, inheritedFin: nil, inheritedEyelid: false)
+        applyCaustics(to: entity, inheritedFin: nil, inheritedEyelid: false, inheritedAccessory: false)
     }
 
     private func applyCaustics(
         to entity: Entity,
         inheritedFin: FinWaveConfiguration?,
-        inheritedEyelid: Bool
+        inheritedEyelid: Bool,
+        inheritedAccessory: Bool
     ) {
         let fin = FinWaveConfiguration.matching(entity.name) ?? inheritedFin
         let isEyelid = inheritedEyelid || entity.name.localizedCaseInsensitiveContains("eyelid")
+        let isAccessory = inheritedAccessory || Accessory.part(named: entity.name) != nil
         if let existingModel = entity.components[ModelComponent.self] {
             let partCount = existingModel.mesh.contents.models.map(\.parts.count).reduce(0, +)
             let blendShapeMapping = BlendShapeWeightsMapping(meshResource: existingModel.mesh)
             let hasBlendShapes = !BlendShapeWeightsComponent(weightsMapping: blendShapeMapping).weightSet.isEmpty
-            if entity.name == "Head", let faceMaterials = faceCausticMaterials(for: existingModel.materials) {
-                // The body: strong caustics on the face.
+            if entity.name == "Head" || isAccessory,
+               let faceMaterials = faceCausticMaterials(for: existingModel.materials, accessory: isAccessory) {
+                // The body, and what she wears on it: strong caustics on the face, bending as she swims.
                 var model = existingModel
                 model.materials = faceMaterials.enabled
                 entity.components.set(model)
@@ -369,19 +350,20 @@ final class UnderwaterSceneController {
             }
         }
         for child in entity.children {
-            applyCaustics(to: child, inheritedFin: fin, inheritedEyelid: isEyelid)
+            applyCaustics(to: child, inheritedFin: fin, inheritedEyelid: isEyelid, inheritedAccessory: isAccessory)
         }
     }
 
-    /// Face caustic materials for the body (with and without caustics).
-    private func faceCausticMaterials(for materials: [any Material]) -> (enabled: [any Material], disabled: [any Material])? {
+    /// Face caustic materials for the body, or an accessory worn on it, which keeps its own
+    /// finish (with and without caustics).
+    private func faceCausticMaterials(for materials: [any Material], accessory: Bool = false) -> (enabled: [any Material], disabled: [any Material])? {
         guard let library else { return nil }
         func make(strength: Float) -> [any Material]? {
             var result: [any Material] = []
             for base in materials {
                 guard var material = try? CustomMaterial(
                     from: base,
-                    surfaceShader: .init(named: "faceCausticSurface", in: library),
+                    surfaceShader: .init(named: accessory ? "accessorySurface" : "faceCausticSurface", in: library),
                     geometryModifier: .init(named: "faceBodyBend", in: library)
                 ) else { return nil }
                 material.custom.value = [0, 0, strength, 0]   // swim bend amplitude, phase, caustic tuning (0 = off), blush

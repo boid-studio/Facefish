@@ -33,8 +33,6 @@ struct RemoteSettingsView: View {
     @AppStorage("remote.puckerPriority") private var puckerPriority = 1.0
     @AppStorage("remote.cameraZ") private var cameraZ = 0.75
     @AppStorage("remote.acting") private var acting = 0.0
-    @AppStorage("remote.waterSurface") private var waterSurface = true
-    @AppStorage("remote.slosh") private var slosh = 1.0
     @State private var centerFace = CenterFaceState.idle
 
     private enum CenterFaceState: Equatable {
@@ -84,22 +82,13 @@ struct RemoteSettingsView: View {
                 } footer: {
                     Text("0 follows the face as it is. Higher plays it bigger: stronger expressions and head moves, harder fins, and big notes that open the fins wide.")
                 }
-                Section {
-                    Toggle("Water surface", systemImage: "water.waves", isOn: $waterSurface)
-                        .onChange(of: waterSurface) { _, v in bluetooth.send(.waterSurface(v)) }
-                    slider("Slosh", value: $slosh, in: 0...2) { .slosh(Float($0)) }
-                } header: {
-                    Text("Water")
-                } footer: {
-                    Text("A water surface near the top that sloshes as the performer moves. Slosh 0 keeps it still, 2 is wild.")
-                }
                 Section("Rendering") {
                     slider("Camera Z", value: $cameraZ, in: 0.1...3, unit: " m") { .cameraZ(Float($0)) }
                 }
                 Section {
                     Button("Send all settings") { sendAll() }
                 } footer: {
-                    Text("Pushes every value above to the main app, e.g. after reconnecting.")
+                    Text("Pushes every value above, and the accessories, to the main app, e.g. after reconnecting.")
                 }
             }
             .disabled(!bluetooth.isConnected)
@@ -195,13 +184,17 @@ struct RemoteSettingsView: View {
         bluetooth.send(.puckerPriority(Float(puckerPriority)))
         bluetooth.send(.cameraZ(Float(cameraZ)))
         bluetooth.send(.acting(Float(acting)))
-        bluetooth.send(.waterSurface(waterSurface))
-        bluetooth.send(.slosh(Float(slosh)))
+        let worn = Set((UserDefaults.standard.string(forKey: "remote.wornAccessories") ?? "").split(separator: ",").map(String.init))
+        for accessory in Accessory.allCases {
+            bluetooth.send(.accessory(accessory, worn.contains(accessory.rawValue)))
+        }
     }
 }
 
 struct ControlActionsView: View {
     @State private var bluetooth = BluetoothControl.shared
+    /// What the fish wears, as last set from here (comma-separated Accessory names); not read back.
+    @AppStorage("remote.wornAccessories") private var wornAccessories = ""
 
     private struct Action: Identifiable {
         let title: String
@@ -217,6 +210,8 @@ struct ControlActionsView: View {
         Action(title: "Loop", systemImage: "arrow.clockwise", command: .loop),
         Action(title: "Blush", systemImage: "heart", command: .blush),
         Action(title: "Blow bubbles", systemImage: "bubbles.and.sparkles", command: .blowBubbles),
+        Action(title: "Hide", systemImage: "eye.slash", command: .hide),
+        Action(title: "Show", systemImage: "eye", command: .show),
     ]
 
     var body: some View {
@@ -242,6 +237,24 @@ struct ControlActionsView: View {
                     }
                 }
                 .padding()
+
+                // The hat: what the fish wears.
+                VStack(alignment: .leading, spacing: 12) {
+                    Label("Accessories", systemImage: "hat.widebrim").font(.headline)
+                    ForEach(Accessory.allCases) { accessory in
+                        Toggle(accessory.title, systemImage: accessory.systemImage, isOn: Binding(
+                            get: { wornAccessories.contains(accessory.rawValue) },
+                            set: { on in
+                                var worn = Set(wornAccessories.split(separator: ",").map(String.init))
+                                if on { worn.insert(accessory.rawValue) } else { worn.remove(accessory.rawValue) }
+                                wornAccessories = worn.sorted().joined(separator: ",")
+                                bluetooth.send(.accessory(accessory, on))
+                            }
+                        ))
+                    }
+                }
+                .padding()
+                .disabled(!bluetooth.isConnected)
             }
             .navigationTitle("Actions")
         }

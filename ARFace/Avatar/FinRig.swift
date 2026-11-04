@@ -102,6 +102,8 @@ final class FinRig {
     /// 0...1 per side (fish's left, right): the side fin swings up and folds over the eye, like a
     /// hand hiding it (a blush). Its usual motion fades out meanwhile.
     var cover = SIMD2<Float>(repeating: 0)
+    /// How hard the side fins paddle while swimming under their own power (1 = as on a lap).
+    var paddleBoost: Float = 1
     /// -1...1: both side fins flap together (a laugh's "ha"s).
     var clap: Float = 0
     /// 0...1: the side fins open wide like arms and the dorsal fin stands up (singing a big note).
@@ -261,18 +263,25 @@ final class FinRig {
             pose.cover[sideIndex] = min(max(sideIndex == 0 ? cover.x : cover.y, 0), 1)
             let free = 1 - 0.85 * pose.cover[sideIndex]
             let outside = max(0, -side * steer), inside = max(0, side * steer)
+            // Swimming, the fins mustn't fold into the body: each stroke reaches out and comes back
+            // to the side (not past it), and they tuck back only so far (the angles add up over
+            // the fin's three joints).
+            let paddle = min(0.22 * propulsion * paddleBoost + 0.4 * outside, 0.35)
+            let maxTuck = 0.6 - 0.4 * min(max(propulsion, 0), 1)
             for index in 0..<2 {
                 let waveAngle = 5.6 * time + phase - 0.7 * Float(index)
+                let stroke = 0.5 + 0.5 * sin(0.5 * strokePhase + phase * 6 - 0.7 * Float(index))
                 pose.pectoralFlap[sideIndex][index] = free * (flapSprings[sideIndex][index].angle
                     + 0.45 * clap
                     + 0.35 * spread
                     + 0.14 * finSway * energy * sin(waveAngle)
-                    + (0.22 * propulsion + 0.4 * outside) * sin(0.5 * strokePhase + phase * 6 - 0.7 * Float(index)))   // paddling
-                pose.pectoralSweep[sideIndex][index] = free * (sweepSprings[sideIndex][index].angle
+                    + paddle * stroke)            // paddling
+                let sweep = sweepSprings[sideIndex][index].angle
                     - side * 0.08 * finSway * energy * sin(waveAngle + 1.2)
-                    + side * 0.35 * propulsion   // tucked back while swimming
+                    + side * 0.15 * propulsion   // tucked back a little while swimming
                     - side * 0.5 * inside        // flared to brake on the inside of a turn
-                    - side * 0.6 * spread)       // opened wide
+                    - side * 0.6 * spread        // opened wide
+                pose.pectoralSweep[sideIndex][index] = free * side * min(side * sweep, maxTuck)
             }
         }
 

@@ -11,6 +11,8 @@ enum ControlCommand: String, Codable, CaseIterable, Identifiable {
     case loop
     case blush
     case blowBubbles
+    case hide
+    case show
 
     var id: String { rawValue }
 
@@ -24,6 +26,8 @@ enum ControlCommand: String, Codable, CaseIterable, Identifiable {
         case .loop: "Loop"
         case .blush: "Blush"
         case .blowBubbles: "Blow bubbles"
+        case .hide: "Hide"
+        case .show: "Show"
         }
     }
 }
@@ -40,9 +44,8 @@ enum RemoteSetting: Codable, Equatable {
     case cameraZ(Float)
     /// 0 = natural, 1 = big stage acting (AvatarController).
     case acting(Float)
-    /// The water surface on or off, and how strongly it sloshes (0...2).
-    case waterSurface(Bool)
-    case slosh(Float)
+    /// Put an accessory on or take it off (the hat button).
+    case accessory(Accessory, Bool)
 
     /// Settings with the same key replace each other while queued.
     var key: String {
@@ -56,8 +59,7 @@ enum RemoteSetting: Codable, Equatable {
         case .puckerPriority: "puckerPriority"
         case .cameraZ: "cameraZ"
         case .acting: "acting"
-        case .waterSurface: "waterSurface"
-        case .slosh: "slosh"
+        case .accessory(let accessory, _): "accessory.\(accessory.rawValue)"
         }
     }
 
@@ -72,8 +74,7 @@ enum RemoteSetting: Codable, Equatable {
         case .puckerPriority(let v): "Pucker priority \(String(format: "%.2f", v))"
         case .cameraZ(let v): "Camera Z \(String(format: "%.2f", v))"
         case .acting(let v): "Acting \(String(format: "%.2f", v))"
-        case .waterSurface(let on): "Water surface \(on ? "on" : "off")"
-        case .slosh(let v): "Slosh \(String(format: "%.2f", v))"
+        case .accessory(let accessory, let on): "\(accessory.title) \(on ? "on" : "off")"
         }
     }
 }

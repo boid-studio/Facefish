@@ -60,6 +60,10 @@ final class AvatarController {
     /// A lap around the bowl (SwimAround.swift) and the quick moves (SwimTrick.swift).
     private var swimAround = SwimAround()
     private var activeTrick: SwimTrick?
+    /// Backing out of frame and swimming back in (HideShow.swift), for the acting.
+    private var hideShow = HideShow()
+    /// Last frame's swim bob, so hide/show paths start exactly where the fish is drawn.
+    private var lastSwimOffset = SIMD3<Float>(repeating: 0)
     private var lastTrickAngles: (yaw: Float, pitch: Float) = (0, 0)
     private var swimFacing = simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)
     /// The lap facing's yaw (radians, kept continuous), how fast it turns, and where the fins steer.
@@ -72,6 +76,10 @@ final class AvatarController {
     private var appliedBend: Float = 0
     private var appliedBlush: Float = 0
     private var headEntity: Entity?
+    /// What the fish can wear (the hat button), each part off until put on.
+    private var accessoryParts: [Accessory: Entity] = [:]
+    /// The meshes bent with the body as she swims (faceBodyBend): the head, then what she wears.
+    private var bentModels: [Entity] = []
     private var tailRig: (entity: Entity, rest: float4x4)?
     /// How far the fish swims toward where it faces, as a fraction of its size per unit of facing
     /// (looking 20 degrees up moves it about 15% of its size up).
@@ -112,18 +120,21 @@ final class AvatarController {
 
     var glassSpheres: [SIMD4<Float>] { mouthBubbleSpheres?.glassSpheres ?? [] }
 
-    /// Pops the fish's bubbles `shouldPop` picks (at the water surface); returns where they were.
-    func popBubbles(where shouldPop: (SIMD4<Float>) -> Bool) -> [SIMD3<Float>] {
-        mouthBubbleSpheres?.pop(where: shouldPop) ?? []
-    }
-
     init(model: Entity, targetSize: Float = 0.25, screenSpaceGlass: Bool = false) {
         finRig = FinRig(model: model)
         eyeRig = EyeRig(model: model)
         lidRig = LidRig(model: model)
         fishSize = targetSize
+        for accessory in Accessory.allCases {
+            guard let part = model.findEntity(named: accessory.partName) else { continue }
+            part.isEnabled = false          // off until put on, and out of the fit
+            accessoryParts[accessory] = part
+        }
+        AvatarSession.shared.availableAccessories = Accessory.allCases.filter { accessoryParts[$0] != nil }
         fit(model, targetSize: targetSize)
         headEntity = model.findEntity(named: "Head")
+        bentModels = [headEntity].compactMap { $0 }
+            + Accessory.allCases.compactMap { accessoryParts[$0] }.flatMap(Self.modelEntities(in:))
         if let tail = model.findEntity(named: "TailRig") {
             tailRig = (tail, tail.transform.matrix)
         }
@@ -302,6 +313,8 @@ final class AvatarController {
         }
         var bodyTurnRate: Float = 0, bodyNodRate: Float = 0, steer: Float = 0, effort: Float = 0, bend: Float = 0
         var cover = SIMD2<Float>(repeating: 0), blush: Float = 0
+        let hiding = hideShow.update(deltaTime: moveDelta)
+        if AvatarSession.shared.fishHidden != hideShow.isHidden { AvatarSession.shared.fishHidden = hideShow.isHidden }
         let lap = swimAround.update(deltaTime: moveDelta)
         let lapWeight = lap?.weight ?? 0
         if let lap {
@@ -334,6 +347,22 @@ final class AvatarController {
             }
         }
         if activeTrick == nil { moveFace = (0, 0, 0, 0) }
+        if let pose = hiding?.pose {
+            // Swimming out and back in: faced along the path like on a lap, the fins steering
+            // ahead of the body, paddling hard, the whole body swimming.
+            updateSwimFacing(pose, deltaTime: moveDelta, lag: 0.45)   // a soft, floaty turn
+            root.orientation = simd_slerp(liveOrientation, swimFacing, pose.weight)
+            bodyTurnRate = facingTurnRate * pose.weight
+            steer = swimSteer * pose.weight
+            effort = max(effort, pose.effort * pose.weight)
+            bend = max(bend, (0.12 + 0.1 * pose.speed) * pose.weight)
+        }
+        finRig.paddleBoost = hiding?.pose != nil ? 1.8 : 1
+        let worn = AvatarSession.shared.wornAccessories
+        for (accessory, part) in accessoryParts where part.isEnabled != worn.contains(accessory) {
+            part.isEnabled = worn.contains(accessory)
+        }
+        root.isEnabled = !(hiding?.hidden ?? false)
         finRig.bodyTurnRate = bodyTurnRate + idleTurnRate
         finRig.bodyNodRate = bodyNodRate
         finRig.steer = steer
@@ -364,17 +393,23 @@ final class AvatarController {
         swimAmount += (swimTarget - swimAmount) * Self.smoothingFactor(deltaTime: deltaTime, timeConstant: 0.5)
         swimMotion.amount = swimAmount * (1 + 0.8 * idleWeight)   // livelier while waiting
         let swim = swimMotion.update(deltaTime: Float(min(deltaTime, 0.1)), mouthOpen: mouthOpen, size: fishSize)
+        lastSwimOffset = swim.offset
         // Laughing: head thrown back a little, bouncing and rocking on each "ha".
         let laughBounce = laughing * laugh.pulse
         root.position = followPosition * (1 - lapWeight) + swim.offset + (lap?.position ?? .zero) * lapWeight + trickOffset
             + SIMD3<Float>(0, 0.008 * laughBounce + 0.004 * laughing, 0)
+        if let pose = hiding?.pose {
+            root.position += (pose.position + swim.offset - root.position) * pose.weight
+        }
         // Big notes: head back, a vibrato tremble, the body swelling a little.
         body.orientation = swim.rotation     // relative to the head pose
             * simd_quatf(angle: -0.12 * laughing - 0.07 * laughBounce - 0.15 * bigNote, axis: [1, 0, 0])
             * simd_quatf(angle: 0.05 * laughBounce + 0.025 * bigNote * vibrato, axis: [0, 0, 1])
         body.scale = SIMD3(repeating: 1 + 0.04 * bigNote)
 
-        if options.mouthBubblesEnabled {
+        // Hidden, she's out of sight: no bubbles from where her mouth would be (those already
+        // out keep rising).
+        if options.mouthBubblesEnabled, !(hiding?.hidden ?? false) {
             updateMouthBubbles(jawOpen: appliedJawOpen, deltaTime: Float(min(deltaTime, 0.1)))
             if options.audioBubblesEnabled {
                 updateAudioBubbles(audio: audio, mouthOpen: mouthOpen, deltaTime: Float(min(deltaTime, 0.1)))
@@ -394,6 +429,7 @@ final class AvatarController {
             lastLaughPulse = laugh.pulse
             mouthBubbleSpheres?.update(deltaTime: deltaTime)
         } else {
+            mouthBubbleSpheres?.update(deltaTime: deltaTime)
             lastLaughPulse = 0
             mouthIsOpen = false
             mouthBubbleBursts.removeAll(keepingCapacity: true)
@@ -488,11 +524,17 @@ final class AvatarController {
     }
 
     /// The next move asked for in AvatarSession. Asks while a move is running are dropped.
+    /// Hide and Show work at any time (hide interrupts a move); other moves only while the fish is
+    /// in view and not already moving.
     private func nextMove() -> SwimMove? {
         let session = AvatarSession.shared
         guard !session.pendingMoves.isEmpty else { return nil }
         let move = session.pendingMoves.removeFirst()
-        return swimAround.isActive || activeTrick != nil ? nil : move
+        switch move {
+        case .hide: return hideShow.isHidden ? nil : move
+        case .show: return hideShow.isHidden ? move : nil
+        default: return swimAround.isActive || activeTrick != nil || hideShow.phase != .visible ? nil : move
+        }
     }
 
     /// Starts a move from the fish's pose now (`live`). It goes off to the side the fish already
@@ -514,6 +556,26 @@ final class AvatarController {
             activeTrick = SwimTrick(kind: .blush, direction: side)
         case .bubbles:
             activeTrick = SwimTrick(kind: .bubbles, direction: side)
+        case .hide:
+            // From exactly where she is and how she faces, even mid-move or mid-arrival.
+            swimAround.stop()
+            activeTrick = nil
+            hideShow.hide(from: root.position - lastSwimOffset, side: side)
+            swimFacing = root.orientation
+            let facing = root.orientation.act([0, 0, 1])
+            facingYaw = atan2(facing.x, facing.z)
+            facingTurnRate = 0
+        case .show:
+            if hideShow.phase == .leaving {
+                // Still swimming away (maybe still in view): she turns back from where she is.
+                hideShow.turnBack(from: root.position - lastSwimOffset, to: followPosition)
+            } else {
+                hideShow.show(to: followPosition, side: Bool.random() ? 1 : -1)
+                let heading = hideShow.startHeading
+                facingYaw = atan2(heading.x, heading.z)
+                swimFacing = simd_quatf(angle: facingYaw, axis: [0, 1, 0])
+                facingTurnRate = 0
+            }
         }
         lastTrickAngles = (0, 0)
     }
@@ -521,7 +583,8 @@ final class AvatarController {
     /// Turns the fish to face along the lap (it faces +Z at rest), nose following climbs and
     /// dives a little, banking into turns and rolling off level now and then. The body follows a
     /// beat late; the fins steer toward where the path goes next, so they work before it turns.
-    private func updateSwimFacing(_ lap: SwimAround.Pose, deltaTime: Float) {
+    /// `lag` is how slowly the body follows the path (seconds): longer turns softer.
+    private func updateSwimFacing(_ lap: SwimAround.Pose, deltaTime: Float, lag: Float = 0.22) {
         // Yaw of a direction, kept continuous with the facing so a half turn doesn't flip sides.
         func yaw(of direction: SIMD3<Float>) -> Float {
             var angle = atan2(direction.x, direction.z)
@@ -534,7 +597,7 @@ final class AvatarController {
         let target = simd_quatf(angle: yaw(of: lap.heading), axis: [0, 1, 0])
             * simd_quatf(angle: pitch, axis: [1, 0, 0])
             * simd_quatf(angle: bank + lap.roll, axis: [0, 0, 1])
-        swimFacing = simd_slerp(swimFacing, target, (1 - exp(-deltaTime / 0.22)) * lap.bodyFollow)
+        swimFacing = simd_slerp(swimFacing, target, (1 - exp(-deltaTime / lag)) * lap.bodyFollow)
         let newYaw = yaw(of: swimFacing.act([0, 0, 1]))
         let rate = (newYaw - facingYaw) / max(deltaTime, 1e-3)
         facingYaw = newYaw
@@ -555,15 +618,17 @@ final class AvatarController {
         appliedBend = amount > 0.0005 ? amount : 0
         appliedBlush = blush
         let phase = finRig.strokePhase
-        if let headEntity, var model = headEntity.components[ModelComponent.self] {
+        for entity in bentModels {
+            guard var model = entity.components[ModelComponent.self] else { continue }
+            let isHead = entity === headEntity
             model.materials = model.materials.map { current in
                 guard var material = current as? CustomMaterial else { return current }
                 material.custom.value.x = appliedBend
                 material.custom.value.y = phase
-                material.custom.value.w = blush
+                if isHead { material.custom.value.w = blush }   // the blush is on her cheeks only
                 return material
             }
-            headEntity.components.set(model)
+            entity.components.set(model)
         }
         // Same wave as the shader at the tail stalk (mesh y = 0.704, Blender axes): move the tail
         // rig sideways and turn it with the body's slope there.
@@ -834,6 +899,11 @@ final class AvatarController {
     }
 
     /// Scales the model to `targetSize` and centers it on the root so head rotation pivots around it.
+    /// `entity` and its descendants that have a mesh.
+    private static func modelEntities(in entity: Entity) -> [Entity] {
+        (entity.components.has(ModelComponent.self) ? [entity] : []) + entity.children.flatMap(modelEntities(in:))
+    }
+
     private func fit(_ model: Entity, targetSize: Float) {
         let bounds = model.visualBounds(relativeTo: nil)
         let size = max(bounds.extents.x, bounds.extents.y, bounds.extents.z)

@@ -81,6 +81,11 @@ struct SwimAround {
         isActive = true
     }
 
+    /// Ends the lap now (the fish is hidden mid-lap).
+    mutating func stop() {
+        isActive = false
+    }
+
     mutating func update(deltaTime: Float) -> Pose? {
         guard isActive else { return nil }
         elapsed += deltaTime

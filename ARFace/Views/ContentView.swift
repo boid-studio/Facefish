@@ -52,7 +52,12 @@ struct ContentView: View {
                     }
                     .modifier(CanvasOrientationEffect(isUpsideDown: tracker.isPhoneUpsideDown))
                     .overlay(alignment: .bottomTrailing) {
-                        settingsButton
+                        VStack(spacing: 12) {
+                            if isAvatarReady, !avatarSession.availableAccessories.isEmpty { accessoriesMenu }
+                            settingsButton
+                        }
+                        .padding(.bottom, 24)
+                        .padding(.trailing, 16)
                     }
                     .overlay(alignment: .bottomLeading) {
                         if isAvatarReady { moveButtons }
@@ -101,12 +106,18 @@ struct ContentView: View {
     /// Makes the fish swim a lap, spin, loop or blush (later also from the companion).
     private var moveButtons: some View {
         // From the left, clear of the settings button on the right.
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             moveButton(.lap, systemImage: "point.forward.to.point.capsulepath", label: "Swim a lap")
             moveButton(.spin, systemImage: "rotate.3d", label: "Spin")
             moveButton(.loop, systemImage: "arrow.clockwise", label: "Loop")
             moveButton(.blush, systemImage: "heart", label: "Blush")
             moveButton(.bubbles, systemImage: "bubbles.and.sparkles", label: "Blow bubbles")
+            // One button: hides the fish, or shows her again while she's hidden.
+            if avatarSession.fishHidden {
+                moveButton(.show, systemImage: "eye", label: "Show")
+            } else {
+                moveButton(.hide, systemImage: "eye.slash", label: "Hide")
+            }
         }
         .padding(.leading, 16)
         .padding(.bottom, 24)
@@ -136,8 +147,32 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Settings")
-        .padding(.bottom, 24)
-        .padding(.trailing, 16)
+    }
+
+    /// The hat: what the fish wears, each put on or taken off.
+    private var accessoriesMenu: some View {
+        Menu {
+            ForEach(avatarSession.availableAccessories) { accessory in
+                Toggle(accessory.title, systemImage: accessory.systemImage, isOn: Binding(
+                    get: { avatarSession.wornAccessories.contains(accessory) },
+                    set: { on in
+                        if on {
+                            avatarSession.wornAccessories.insert(accessory)
+                        } else {
+                            avatarSession.wornAccessories.remove(accessory)
+                        }
+                    }
+                ))
+            }
+        } label: {
+            Image(systemName: avatarSession.wornAccessories.isEmpty ? "hat.widebrim" : "hat.widebrim.fill")
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .menuActionDismissBehavior(.disabled)   // put on several at once
+        .buttonStyle(.plain)
+        .accessibilityLabel("Accessories")
     }
 }
 
