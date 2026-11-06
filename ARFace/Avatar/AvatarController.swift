@@ -54,7 +54,7 @@ final class AvatarController {
     private var vibratoTime: Float = 0
     private var lastMouthOpen: Float = 0
     /// A move taking over the mouth (blowing bubbles), from the last frame's move.
-    private var moveFace: (takeover: Float, cheekPuff: Float, pucker: Float, bubbles: Float) = (0, 0, 0, 0)
+    private var moveFace: (takeover: Float, cheekPuff: Float, pucker: Float, bubbles: Float, seal: Float) = (0, 0, 0, 0, 0)
     /// 0 = natural, 1 = big stage acting (AvatarDebugModel.acting, also set from the control app).
     private var acting: Float { AvatarSession.shared.avatarDebug.acting }
     /// A lap around the bowl (SwimAround.swift) and the quick moves (SwimTrick.swift).
@@ -62,6 +62,11 @@ final class AvatarController {
     private var activeTrick: SwimTrick?
     /// Backing out of frame and swimming back in (HideShow.swift), for the acting.
     private var hideShow = HideShow()
+    private var stare = Stare()
+    private var lastStareYaw: Float = 0
+    /// The right eyeball's centre (in the fish's frame) and radius, for the stare.
+    private var rightEyeOffset = SIMD3<Float>(-0.03, 0.02, 0.06)
+    private var rightEyeRadius: Float = 0.02
     /// Last frame's swim bob, so hide/show paths start exactly where the fish is drawn.
     private var lastSwimOffset = SIMD3<Float>(repeating: 0)
     private var lastTrickAngles: (yaw: Float, pitch: Float) = (0, 0)
@@ -84,6 +89,23 @@ final class AvatarController {
     /// How far the fish swims toward where it faces, as a fraction of its size per unit of facing
     /// (looking 20 degrees up moves it about 15% of its size up).
     var headFollowGain: Float = 0.45
+    /// The phone's movement without gravity (g, screen axes: x right, y up, z out of the screen), so
+    /// she bobs in the water as it moves; and how much (0 off, 1 slight, 2 more).
+    var phoneAcceleration = SIMD3<Float>(repeating: 0)
+    var motionReaction: Float = 1
+    /// Where the fish is (scene space) and how fast she's swimming (m/s), for the wake in the water.
+    var fishPosition: SIMD3<Float> { root.position }
+    private(set) var swimSpeed: Float = 0
+    private var lastFishPosition: SIMD3<Float>?
+    private var motionOffset = SIMD3<Float>(repeating: 0)
+    private var motionVelocity = SIMD3<Float>(repeating: 0)
+    /// The view she's seen in (AvatarView), so following the head keeps her in it: the camera's
+    /// distance from her spot (m), its vertical field of view (degrees), and width / height.
+    var cameraDistance: Float = 0.75
+    var cameraFieldOfView: Float = 35
+    var viewAspect: Float = 0.46
+    /// Half the fish's width and height, facing the camera (m).
+    private var fishHalfExtent = SIMD2<Float>(repeating: 0.1)
     private var followPosition = SIMD3<Float>(repeating: 0)
     private var followVelocity = SIMD3<Float>(repeating: 0)
     private var swimAmount: Float = 1
@@ -126,15 +148,17 @@ final class AvatarController {
         lidRig = LidRig(model: model)
         fishSize = targetSize
         for accessory in Accessory.allCases {
-            guard let part = model.findEntity(named: accessory.partName) else { continue }
+            guard let part = accessory.find(in: model) else { continue }
             part.isEnabled = false          // off until put on, and out of the fit
             accessoryParts[accessory] = part
         }
         AvatarSession.shared.availableAccessories = Accessory.allCases.filter { accessoryParts[$0] != nil }
         fit(model, targetSize: targetSize)
+        let fitted = model.visualBounds(relativeTo: nil)
+        fishHalfExtent = SIMD2(fitted.extents.x, fitted.extents.y) / 2
         headEntity = model.findEntity(named: "Head")
         bentModels = [headEntity].compactMap { $0 }
-            + Accessory.allCases.compactMap { accessoryParts[$0] }.flatMap(Self.modelEntities(in:))
+            + Accessory.allCases.filter { !$0.isSurroundings }.compactMap { accessoryParts[$0] }.flatMap(Self.modelEntities(in:))
         if let tail = model.findEntity(named: "TailRig") {
             tailRig = (tail, tail.transform.matrix)
         }
@@ -142,6 +166,15 @@ final class AvatarController {
         sceneRoot.addChild(mouthBubbles)
         root.addChild(body)
         body.addChild(model)
+        // Surroundings (the diving helmet) stay where they are, around her rest spot, while she moves.
+        for (accessory, part) in accessoryParts where accessory.isSurroundings {
+            part.setParent(sceneRoot, preservingWorldTransform: true)
+        }
+        if let eye = EyeRig.find(in: model, named: "eyer") {
+            let bounds = eye.visualBounds(relativeTo: root)
+            rightEyeOffset = bounds.center
+            rightEyeRadius = max(bounds.extents.x, bounds.extents.y, bounds.extents.z) / 2
+        }
         // The tail twice, so half the wake comes off it.
         wakeSpots = ["TailRig", "TailRig", "PecRig_L", "PecRig_R"].compactMap { name in
             model.findEntity(named: name).map { $0.visualBounds(relativeTo: body) }
@@ -312,7 +345,7 @@ final class AvatarController {
             start(move, live: liveOrientation)
         }
         var bodyTurnRate: Float = 0, bodyNodRate: Float = 0, steer: Float = 0, effort: Float = 0, bend: Float = 0
-        var cover = SIMD2<Float>(repeating: 0), blush: Float = 0
+        var cover = SIMD2<Float>(repeating: 0), blush: Float = 0, finPose = FinPose.cover
         let hiding = hideShow.update(deltaTime: moveDelta)
         if AvatarSession.shared.fishHidden != hideShow.isHidden { AvatarSession.shared.fishHidden = hideShow.isHidden }
         let lap = swimAround.update(deltaTime: moveDelta)
@@ -341,12 +374,13 @@ final class AvatarController {
                 bend = pose.bend
                 cover = pose.cover
                 blush = pose.blush
-                moveFace = (pose.mouthTakeover, pose.cheekPuff, pose.pucker, pose.bubbles)
+                moveFace = (pose.mouthTakeover, pose.cheekPuff, pose.pucker, pose.bubbles, pose.seal)
+                finPose = pose.finPose
             } else {
                 activeTrick = nil
             }
         }
-        if activeTrick == nil { moveFace = (0, 0, 0, 0) }
+        if activeTrick == nil { moveFace = (0, 0, 0, 0, 0) }
         if let pose = hiding?.pose {
             // Swimming out and back in: faced along the path like on a lap, the fins steering
             // ahead of the body, paddling hard, the whole body swimming.
@@ -357,11 +391,27 @@ final class AvatarController {
             effort = max(effort, pose.effort * pose.weight)
             bend = max(bend, (0.12 + 0.1 * pose.speed) * pose.weight)
         }
+        let staring = stare.update(deltaTime: moveDelta)
+        if let pose = staring {
+            // Up to the lens, her right side to it.
+            let turn = simd_quatf(angle: pose.yaw, axis: [0, 1, 0]) * simd_quatf(angle: pose.roll, axis: [0, 0, 1])
+            root.orientation = simd_slerp(liveOrientation, turn, pose.weight)
+            bodyTurnRate = (pose.yaw - lastStareYaw) / moveDelta * pose.weight
+            lastStareYaw = pose.yaw
+            effort = max(effort, pose.effort * pose.weight)
+            bend = max(bend, 0.12 * pose.effort * pose.weight)
+        } else {
+            lastStareYaw = 0
+        }
+        // Her eyes turn full right, into the lens.
+        eyeRig.lookOverride = (-eyeRig.range, 0, (staring?.gaze ?? 0) * (staring?.weight ?? 0))
         finRig.paddleBoost = hiding?.pose != nil ? 1.8 : 1
         let worn = AvatarSession.shared.wornAccessories
         for (accessory, part) in accessoryParts where part.isEnabled != worn.contains(accessory) {
             part.isEnabled = worn.contains(accessory)
         }
+        finRig.coverClearance = accessoryParts.keys.filter(worn.contains)
+            .reduce(SIMD2<Float>(repeating: 0)) { simd_max($0, $1.coverClearance) }
         root.isEnabled = !(hiding?.hidden ?? false)
         finRig.bodyTurnRate = bodyTurnRate + idleTurnRate
         finRig.bodyNodRate = bodyNodRate
@@ -373,7 +423,9 @@ final class AvatarController {
         finRig.spread = bigNote                               // big notes: fins open wide
         finRig.finReaction = 1 + acting
         finRig.cover = cover
-        lidRig.maxClosed = 1 - 0.95 * cover
+        finRig.gesture = [finPose, finPose]
+        // Over the eyes the lids stay open, so the fins (posed against open lids) never cut them.
+        lidRig.maxClosed = finPose.clearsEye ? 1 - 0.95 * cover : SIMD2(repeating: 1)
         applyFaceShader(bend: bend, blush: max(blush, 0.3 * laughing))
 
         // Once fully at rest, nil hands the fins over to their idle swim.
@@ -401,8 +453,24 @@ final class AvatarController {
         if let pose = hiding?.pose {
             root.position += (pose.position + swim.offset - root.position) * pose.weight
         }
+        if let pose = staring {
+            root.position += (pose.position - root.position) * pose.weight   // steady up close
+        }
+        // How fast she's going, for the wake (zero while out of sight).
+        if root.isEnabled, let last = lastFishPosition, deltaTime > 0 {
+            let speed = simd_length(root.position - last) / Float(deltaTime)
+            swimSpeed += (min(speed, 3) - swimSpeed) * Self.smoothingFactor(deltaTime: deltaTime, timeConstant: 0.15)
+        } else {
+            swimSpeed = 0
+        }
+        lastFishPosition = root.position
+        // The phone moving: she lags in the water and wobbles back.
+        updateMotionBob(deltaTime: Float(min(deltaTime, 0.1)))
+        root.position += motionOffset
+        let motionTilt = simd_quatf(angle: min(max(-motionVelocity.x * 1.5, -0.12), 0.12), axis: [0, 0, 1])
+            * simd_quatf(angle: min(max(motionVelocity.y * 1.2, -0.1), 0.1), axis: [1, 0, 0])
         // Big notes: head back, a vibrato tremble, the body swelling a little.
-        body.orientation = swim.rotation     // relative to the head pose
+        body.orientation = motionTilt * swim.rotation     // relative to the head pose
             * simd_quatf(angle: -0.12 * laughing - 0.07 * laughBounce - 0.15 * bigNote, axis: [1, 0, 0])
             * simd_quatf(angle: 0.05 * laughBounce + 0.025 * bigNote * vibrato, axis: [0, 0, 1])
         body.scale = SIMD3(repeating: 1 + 0.04 * bigNote)
@@ -475,6 +543,9 @@ final class AvatarController {
         switch location {
         case .cheekPuff: return value * (1 - takeover) + moveFace.cheekPuff * takeover
         case .mouthPucker: return value * (1 - takeover) + moveFace.pucker * takeover
+        // Sealed: lips pressed together and rolled in.
+        case .mouthRollUpper, .mouthRollLower: return value * (1 - takeover) + 0.7 * moveFace.seal * takeover
+        case .mouthPressLeft, .mouthPressRight: return value * (1 - takeover) + 0.6 * moveFace.seal * takeover
         default:
             let name = location.rawValue
             return name.hasPrefix("mouth") || name.hasPrefix("jaw") || name.hasPrefix("tongue")
@@ -533,7 +604,7 @@ final class AvatarController {
         switch move {
         case .hide: return hideShow.isHidden ? nil : move
         case .show: return hideShow.isHidden ? move : nil
-        default: return swimAround.isActive || activeTrick != nil || hideShow.phase != .visible ? nil : move
+        default: return swimAround.isActive || activeTrick != nil || stare.isActive || hideShow.phase != .visible ? nil : move
         }
     }
 
@@ -556,9 +627,22 @@ final class AvatarController {
             activeTrick = SwimTrick(kind: .blush, direction: side)
         case .bubbles:
             activeTrick = SwimTrick(kind: .bubbles, direction: side)
+        case .shush:
+            activeTrick = SwimTrick(kind: .shush, direction: side)
+        case .sealed:
+            activeTrick = SwimTrick(kind: .sealed, direction: side)
+        case .stare:
+            // Her right eye right at the lens, close enough to fill much of the view (its narrow
+            // side), whatever the zoom and field of view.
+            let turn = simd_quatf(angle: Stare.yaw, axis: [0, 1, 0]) * simd_quatf(angle: 0.12, axis: [0, 0, 1])
+            let halfView = tan(cameraFieldOfView * .pi / 360) * min(viewAspect, 1)
+            let distance = min(max(rightEyeRadius / (0.55 * halfView), 0.08), cameraDistance * 0.85)
+            let spot = SIMD3<Float>(0, 0, cameraDistance - distance) - turn.act(rightEyeOffset)
+            stare.start(from: followPosition, to: spot)
         case .hide:
             // From exactly where she is and how she faces, even mid-move or mid-arrival.
             swimAround.stop()
+            stare.stop()
             activeTrick = nil
             hideShow.hide(from: root.position - lastSwimOffset, side: side)
             swimFacing = root.orientation
@@ -652,10 +736,13 @@ final class AvatarController {
         var target = SIMD3<Float>(repeating: 0)
         if enabled, let rotation = smoothedRotation {
             let facing = rotation.act([0, 0, 1])          // the fish faces +Z at rest
-            target = SIMD3(facing.x, facing.y, 0) * headFollowGain * (1 + acting) * fishSize
-            let limit = (0.4 + 0.15 * acting) * fishSize    // stay in the frame
-            let length = simd_length(target)
-            if length > limit { target *= limit / length }
+            let follow = SIMD2(facing.x, facing.y) * headFollowGain * (1 + acting) * fishSize
+            // Small tilts move her as they come; bigger ones ease her in toward the edge, never past.
+            func eased(_ value: Float, within limit: Float) -> Float {
+                limit > 1e-4 ? limit * tanh(value / limit) : 0
+            }
+            let limit = followLimit
+            target = SIMD3(eased(follow.x, within: limit.x), eased(follow.y, within: limit.y), 0)
         }
         let stiffness: Float = 9, ratio: Float = 0.75
         let steps = max(1, Int((deltaTime / (1.0 / 120)).rounded(.up)))
@@ -667,6 +754,35 @@ final class AvatarController {
             followVelocity += (springForce - dampingForce) * stepTime
             followPosition += followVelocity * stepTime
         }
+    }
+
+    /// Inertia in the water: when the phone moves one way, she's left behind a little the other way
+    /// (on screen), then springs back with a soft wobble. Slight, and big jolts are clipped.
+    private func updateMotionBob(deltaTime: Float) {
+        var push = -phoneAcceleration
+        let strength = simd_length(push)
+        if strength > 0.6 { push *= 0.6 / strength }           // g; a bump doesn't fling her
+        let force = push * 9.81 * 0.05 * min(max(motionReaction, 0), 2)
+        let stiffness: Float = 14, ratio: Float = 0.3
+        let steps = max(1, Int((deltaTime / (1.0 / 120)).rounded(.up)))
+        let stepTime = deltaTime / Float(steps)
+        for _ in 0..<steps {
+            let spring = -stiffness * motionOffset - 2 * ratio * sqrt(stiffness) * motionVelocity
+            motionVelocity += (spring + force) * stepTime
+            motionOffset += motionVelocity * stepTime
+        }
+        let limit: Float = 0.025 * min(max(motionReaction, 0), 2)
+        let length = simd_length(motionOffset)
+        if length > limit, length > 0 { motionOffset *= limit / length }
+    }
+
+    /// How far she may follow the head from the middle, sideways and up/down: she stays mostly
+    /// inside a square in the middle of the view, as wide as its narrow side, at any zoom (fins
+    /// may cross its edge a little).
+    private var followLimit: SIMD2<Float> {
+        let halfHeight = cameraDistance * tan(cameraFieldOfView * .pi / 360)
+        let halfSquare = halfHeight * min(viewAspect, 1)
+        return simd_max(SIMD2(repeating: halfSquare) - 0.8 * fishHalfExtent, .zero)
     }
 
     /// Ease-in-out with zero velocity and acceleration at both ends.

@@ -20,6 +20,9 @@ kernel void glassBubbles(
     constant uint *tileOffsets [[buffer(5)]],
     constant ushort *tileIndices [[buffer(6)]],
     constant uint2 &tileInfo [[buffer(7)]],
+    // The scene's look (SceneLook): white balance gains, what bubbles reflect below and above, and
+    // the vignette (strength, start and end radius in halves of the narrow side).
+    constant float4 *look [[buffer(8)]],
     uint2 pixel [[thread_position_in_grid]]
 ) {
     if (pixel.x >= output.get_width() || pixel.y >= output.get_height()) return;
@@ -33,7 +36,26 @@ kernel void glassBubbles(
     float4 scenePoint = inverseProjection * float4(ndc, depth.sample(depthSampler, uv).r, 1.0);
     float3 scenePosition = scenePoint.xyz / scenePoint.w;
     float sceneDistance = -scenePosition.z > 0.0 ? length(scenePosition) : INFINITY;
-    float4 color = scene.sample(linearSampler, uv);
+    // Seen through moving water: the image wavers in a slow, swirling flow (look[4]: strength,
+    // time), measured in the screen's narrow side so it's the same in portrait and on the round
+    // display, with a faint colour fringe where it bends.
+    float4 color;
+    if (look[4].x > 0.0) {
+        float t = look[4].y;
+        float2 p = (float2(pixel) + 0.5) / min(size.x, size.y);
+        float2 flow = float2(
+            sin(p.y * 9.0 + t * 0.9 + sin(p.x * 5.0 + t * 0.53) * 1.6)
+                + 0.5 * sin(p.y * 21.0 - t * 1.7 + p.x * 7.0),
+            sin(p.x * 8.0 - t * 0.8 + sin(p.y * 6.0 - t * 0.61) * 1.6)
+                + 0.5 * sin(p.x * 19.0 + t * 1.4 - p.y * 9.0));
+        float2 shift = flow * look[4].x * 0.018 * min(size.x, size.y) / size;
+        color = scene.sample(linearSampler, uv + shift * 0.9);
+        if (look[4].z > 0.0) {   // the fringe (off while the phone is hot)
+            color.b = scene.sample(linearSampler, uv + shift * 1.25).b;
+        }
+    } else {
+        color = scene.sample(linearSampler, uv);
+    }
 
     uint tile = (pixel.y / tileInfo.y) * tileInfo.x + pixel.x / tileInfo.y;
     for (uint k = tileOffsets[tile]; k < tileOffsets[tile + 1]; ++k) {
@@ -80,7 +102,7 @@ kernel void glassBubbles(
 
         float3 reflected = reflect(ray, normal);
         float fresnel = 0.0035 + 0.9965 * pow(1.0 - facing, 5.0);
-        float3 environment = mix(float3(0.12, 0.3, 0.4), float3(0.7, 0.9, 1.0),
+        float3 environment = mix(look[1].rgb, look[2].rgb,
                                  saturate(reflected.y * 0.5 + 0.5));
         float key = pow(saturate(dot(reflected, normalize(float3(-0.35, 0.65, 0.68)))), 110.0);
         float fill = pow(saturate(dot(reflected, normalize(float3(0.65, 0.15, 0.74)))), 65.0);
@@ -94,5 +116,13 @@ kernel void glassBubbles(
         color.rgb = mix(color.rgb, glass, coverage);
     }
 
+    color.rgb *= look[0].rgb;   // white balance
+    // Vignette: round, from the middle, in halves of the narrow side (the round display's edge is 1).
+    if (look[3].x > 0.0) {
+        float radius = length(float2(pixel) + 0.5 - size * 0.5) / (0.5 * min(size.x, size.y));
+        float edge = saturate((radius - look[3].y) / (look[3].z - look[3].y));
+        edge = edge * edge * edge * (edge * (edge * 6.0 - 15.0) + 10.0);   // eases in very gently
+        color.rgb *= 1.0 - look[3].x * edge;
+    }
     output.write(color, pixel);
 }

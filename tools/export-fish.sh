@@ -49,8 +49,11 @@ echo "Wrote ARFace/Resources/fish.usdz ($(du -h "$REPO/ARFace/Resources/fish.usd
 # What the app looks for, so a renamed or missing part shows up here rather than on stage.
 if command -v usdtree > /dev/null; then
     TREE=$(usdtree "$REPO/ARFace/Resources/fish.usdz" 2>/dev/null)
-    for part in Head Brows TailRig PecRig_L PecRig_R DorsalRig Eye_L Eye_R Eyelid_L Eyelid_R lashesClosed; do
+    for part in Head TailRig PecRig_L PecRig_R DorsalRig Eye_L Eye_R Eyelid_L Eyelid_R lashesClosed; do
         grep -q -- "--$part " <<< "$TREE" || echo "WARNING: no $part in the export" >&2
     done
+    # Accessories (the hat button): accessory_<name>, maybe with a version number.
+    ACCESSORIES=$(grep -oE -- "--accessory_[A-Za-z0-9_]+ " <<< "$TREE" | sed 's/^--//' | sort -u | tr '\n' ' ')
+    echo "Accessories: ${ACCESSORIES:-none}"
     echo "Blend shapes: $(grep -c 'BlendShape' <<< "$TREE")"
 fi

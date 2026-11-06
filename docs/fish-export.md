@@ -89,7 +89,8 @@ The app matches names ignoring `.`, `_` and case.
 - **Remove test animations** from rigs when done with them. The export drops animation, but the
   viewport shows the animated pose, which can hide what the file really holds.
 - **Accessories** (things she can wear, put on and off with the hat button) are objects named
-  `accessory_<name>`, e.g. `accessory_mask`, in the head's space. To follow the face, give them the
+  `accessory_<name>`, e.g. `accessory_mask` (a version number after it is fine: `accessory_mask2`),
+  in the head's space. To follow the face, give them the
   head's shape keys (start from a copy of the head). A new one also needs a case in
   `ARFace/Avatar/Accessory.swift`. Their materials must be plain values or image textures:
   procedural nodes (noise, colour ramps) don't export, and the material keeps only the unlinked
@@ -102,7 +103,7 @@ The app matches names ignoring `.`, `_` and case.
 | Part | Used by |
 | --- | --- |
 | `Head` mesh with ARKit-named shape keys (`jawOpen`, `mouthSmileLeft`…) | `AvatarController` (face) |
-| `Brows` mesh with the five ARKit brow shape keys | `AvatarController` (face) |
+| `accessory_brows` mesh with the five ARKit brow shape keys (worn by default) | `AvatarController` (face), the hat button |
 | `Eye_L`, `Eye_R` (pivot at the eyeball's centre) | `EyeRig` |
 | `Eyelid_L`, `Eyelid_R` with a `lashesClosed` shape key | `LidRig` |
 | `TailRig` (`Tail_1`–`Tail_3`) | `FinRig`, the swim body bend |

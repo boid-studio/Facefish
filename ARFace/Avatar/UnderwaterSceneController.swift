@@ -230,6 +230,27 @@ final class UnderwaterSceneController {
     private let logger = Logger(subsystem: "ARFace", category: "Underwater")
     private var dapples: [(light: SpotLight, phase: Float)] = []
     private var sun: DirectionalLight?
+    private var fill: DirectionalLight?
+    private var debris: [DebrisLayer] = []
+    private var wake: Entity?
+    private var debrisAmount: Float = 1
+    private var waterMotion: Float = 1
+    private var sloshOffset = SIMD3<Float>(repeating: 0)
+    private var sloshVelocity = SIMD3<Float>(repeating: 0)
+    /// The phone's movement without gravity (g, screen axes), to slosh the debris.
+    var phoneAcceleration = SIMD3<Float>(repeating: 0)
+    /// The camera's distance (the zoom), for the near debris in front of it.
+    var cameraZ: Float = 0.75
+    /// The phone is hot (thermal state serious or worse): half the debris and no wake, to cool it.
+    var easesOff = false
+    /// The water's colours for the shaders (WaterPalette in Underwater.metal), shared by every
+    /// scene material: a new look rewrites it, not the materials.
+    private var paletteTexture: TextureResource?
+    private var look = SceneLook()
+    private static let sunColor = SIMD3<Float>(0.75, 0.93, 1.0)
+    private static let fillColor = SIMD3<Float>(0.2, 0.55, 0.75)
+    private static let spotColor = SIMD3<Float>(0.8, 0.97, 1.0)
+    private static let speckColor = SIMD3<Float>(0.88, 0.97, 1.0)
     private var materialOverrides: [MaterialOverride] = []
     private var time: Float = 0
     private var ambientBubbles: BubbleSphereSystem?
@@ -248,9 +269,16 @@ final class UnderwaterSceneController {
         if library == nil {
             logger.error("Metal library unavailable; caustic and fin-ripple shaders are disabled.")
         }
+        if let image = Self.paletteImage(look) {
+            do {
+                paletteTexture = try TextureResource(image: image, options: Self.paletteOptions)
+            } catch {
+                logger.error("Water palette unavailable; the sea stays blue: \(error.localizedDescription)")
+            }
+        }
         addLights(to: scene)
         addBackdrop(to: scene.findEntity(named: "Backdrop") ?? scene)
-        addMarineSnow(to: scene)
+        addDebris(to: scene)
         if let emitter = scene.findEntity(named: "BubbleEmitter") {
             ambientBubbles = BubbleSphereSystem(
                 parent: emitter,
@@ -279,8 +307,12 @@ final class UnderwaterSceneController {
         setAmbientBubblesEnabled(options.ambientBubblesEnabled)
         setSpotlightsEnabled(options.spotlightsEnabled)
         setShadowsEnabled(options.shadowsEnabled)
+        setLook(options.look)
+        setDebrisAmount(options.debrisAmount * (easesOff ? 0.5 : 1))
+        waterMotion = options.waterMotion
 
         time += Float(min(deltaTime, 0.1))
+        updateDebris(deltaTime: Float(min(deltaTime, 0.1)))
         if ambientBubblesEnabled {
             ambientBubbles?.update(deltaTime: deltaTime, emissionRate: 25, time: time)
         }
@@ -367,6 +399,7 @@ final class UnderwaterSceneController {
                     geometryModifier: .init(named: "faceBodyBend", in: library)
                 ) else { return nil }
                 material.custom.value = [0, 0, strength, 0]   // swim bend amplitude, phase, caustic tuning (0 = off), blush
+                withPalette(&material)
                 result.append(material)
             }
             return result
@@ -398,6 +431,7 @@ final class UnderwaterSceneController {
                 )
                 material.custom.value = [fin.amplitude, fin.wavelength, fin.falloff, 0]
                 material.faceCulling = .none
+                withPalette(&material)
                 return material
             }
 
@@ -405,6 +439,7 @@ final class UnderwaterSceneController {
             var material = try CustomMaterial(from: base, surfaceShader: .init(named: shaderName, in: library))
             // Pattern frequency per metre, focus, strength, animation speed.
             material.custom.value = [32 / causticScale, 6, 1.4 * causticIntensity, causticSpeed]
+            withPalette(&material)
             return material
         } catch {
             logger.error("Caustic material unavailable: \(error.localizedDescription)")
@@ -415,41 +450,175 @@ final class UnderwaterSceneController {
     // MARK: - Marine snow
 
     /// Faint specks drifting slowly through the water (marine snow), always there.
-    private func addMarineSnow(to scene: Entity) {
-        var particles = ParticleEmitterComponent()
-        particles.emitterShape = .box
-        particles.birthLocation = .volume
-        particles.emitterShapeSize = [1.2, 1.0, 0.8]
-        particles.emissionDirection = [0, -1, 0]
-        particles.speed = 0.004
-        particles.speedVariation = 0.003
-        particles.particlesInheritTransform = false
-        var specks = particles.mainEmitter
-        specks.birthRate = 45
-        specks.lifeSpan = 6
-        specks.lifeSpanVariation = 2
-        specks.size = 0.0035
-        specks.sizeVariation = 0.0015
-        specks.spreadingAngle = .pi / 3
-        specks.blendMode = .alpha
-        specks.isLightingEnabled = false
-        specks.opacityCurve = .gradualFadeInOut
-        specks.noiseStrength = 0.006
-        specks.noiseScale = 2
-        specks.noiseAnimationSpeed = 0.15
-        specks.color = .constant(.single(UIColor(red: 0.88, green: 0.97, blue: 1.0, alpha: 0.9)))
-        particles.mainEmitter = specks
-        let entity = Entity()
-        entity.position = [0, 0, -0.1]
-        entity.components.set(particles)
-        scene.addChild(entity)
+    /// One depth layer of debris drifting in the water.
+    private struct DebrisLayer {
+        let entity: Entity
+        /// Where it sits; near layers ride along in front of the camera.
+        let base: SIMD3<Float>
+        let followsCamera: Bool
+        /// How much the current and the phone's sloshing move it (nearer moves more: parallax).
+        let parallax: Float
+        let birthRate: Float
+        let alpha: CGFloat
+        let brightness: Float
+    }
+
+    /// Marine snow and debris in three depths (far, mid, near) and a few glints, swirling in
+    /// turbulence and swaying together in a slow, wandering current; the phone's movement sloshes
+    /// them, nearer ones more. `debrisAmount` and `waterMotion` (the Scene tab) scale it all.
+    private func addDebris(to scene: Entity) {
+        func layer(
+            at base: SIMD3<Float>, followsCamera: Bool = false, box: SIMD3<Float>, parallax: Float,
+            birthRate: Float, lifeSpan: Double, size: Float, sizeVariation: Float, alpha: CGFloat,
+            brightness: Float = 1, noise: Float, noiseScale: Float, noiseSpeed: Float, sink: Float,
+            opacity: ParticleEmitterComponent.ParticleEmitter.OpacityCurve = .gradualFadeInOut,
+            additive: Bool = false
+        ) {
+            var particles = ParticleEmitterComponent()
+            particles.emitterShape = .box
+            particles.birthLocation = .volume
+            particles.emitterShapeSize = box
+            particles.emissionDirection = [0, -1, 0]
+            particles.speed = sink
+            particles.speedVariation = sink * 0.8
+            particles.particlesInheritTransform = true   // they sway with the current
+            var specks = particles.mainEmitter
+            specks.birthRate = birthRate
+            specks.lifeSpan = lifeSpan
+            specks.lifeSpanVariation = lifeSpan * 0.35
+            specks.size = size
+            specks.sizeVariation = sizeVariation
+            specks.spreadingAngle = .pi / 2
+            specks.blendMode = additive ? .additive : .alpha
+            specks.isLightingEnabled = false
+            specks.opacityCurve = opacity
+            specks.noiseStrength = noise          // turbulence: eddies that push them about
+            specks.noiseScale = noiseScale
+            specks.noiseAnimationSpeed = noiseSpeed
+            specks.dampingFactor = 0.6
+            specks.color = .constant(.single(Self.uiColor(Self.speckColor * brightness, alpha: alpha)))
+            particles.mainEmitter = specks
+            // Start full rather than empty.
+            particles.burstCount = Int(birthRate * Float(lifeSpan) * 0.6)
+            particles.burst()
+            let entity = Entity()
+            entity.position = base
+            entity.components.set(particles)
+            scene.addChild(entity)
+            debris.append(DebrisLayer(entity: entity, base: base, followsCamera: followsCamera,
+                                      parallax: parallax, birthRate: birthRate, alpha: alpha,
+                                      brightness: brightness))
+        }
+        // Far: many tiny, dim specks between the fish and the backdrop.
+        layer(at: [0, 0, -0.9], box: [2.2, 1.6, 0.8], parallax: 0.4, birthRate: 140, lifeSpan: 9,
+              size: 0.0048, sizeVariation: 0.002, alpha: 0.38, brightness: 0.85,
+              noise: 0.012, noiseScale: 1.4, noiseSpeed: 0.18, sink: 0.004)
+        // Mid: around the fish, the main snow.
+        layer(at: [0, 0, -0.15], box: [1.3, 1.1, 0.8], parallax: 1, birthRate: 100, lifeSpan: 8,
+              size: 0.0065, sizeVariation: 0.0035, alpha: 0.5,
+              noise: 0.022, noiseScale: 2.6, noiseSpeed: 0.32, sink: 0.005)
+        // Near: a few big, soft flakes drifting past close to the lens, out of focus.
+        layer(at: [0, 0, 0.4], followsCamera: true, box: [0.55, 0.7, 0.3], parallax: 1.8, birthRate: 7,
+              lifeSpan: 7, size: 0.022, sizeVariation: 0.01, alpha: 0.16,
+              noise: 0.03, noiseScale: 1.8, noiseSpeed: 0.25, sink: 0.006)
+        // Glints: now and then a speck catches the light, briefly.
+        layer(at: [0, 0.1, -0.2], box: [1.2, 0.9, 0.7], parallax: 1, birthRate: 10, lifeSpan: 1.6,
+              size: 0.0045, sizeVariation: 0.002, alpha: 0.55, brightness: 1.3,
+              noise: 0.02, noiseScale: 2.6, noiseSpeed: 0.32, sink: 0.003,
+              opacity: .quickFadeInOut, additive: true)
+
+        // The wake: specks stirred up behind her when she swims fast (stir(at:speed:)).
+        var wake = ParticleEmitterComponent()
+        wake.emitterShape = .sphere
+        wake.birthLocation = .volume
+        wake.emitterShapeSize = [0.05, 0.05, 0.05]
+        wake.speed = 0.03
+        wake.speedVariation = 0.02
+        wake.particlesInheritTransform = false   // left behind
+        wake.isEmitting = false
+        var stirred = wake.mainEmitter
+        stirred.birthRate = 60
+        stirred.lifeSpan = 2.5
+        stirred.lifeSpanVariation = 0.8
+        stirred.size = 0.006
+        stirred.sizeVariation = 0.003
+        stirred.spreadingAngle = .pi
+        stirred.blendMode = .alpha
+        stirred.isLightingEnabled = false
+        stirred.opacityCurve = .gradualFadeInOut
+        stirred.noiseStrength = 0.08
+        stirred.noiseScale = 4
+        stirred.noiseAnimationSpeed = 0.6
+        stirred.dampingFactor = 1.5
+        stirred.color = .constant(.single(Self.uiColor(Self.speckColor, alpha: 0.45)))
+        wake.mainEmitter = stirred
+        let wakeEntity = Entity()
+        wakeEntity.components.set(wake)
+        scene.addChild(wakeEntity)
+        self.wake = wakeEntity
+    }
+
+    /// Sways the debris in the current and the phone's sloshing; the near layer rides in front of
+    /// the camera.
+    private func updateDebris(deltaTime: Float) {
+        let motion = min(max(waterMotion, 0), 2)
+        // A slow current that wanders, now and then surging.
+        let surge = pow(0.5 + 0.5 * sin(time * 0.13 + 1.1), 2)
+        let current = SIMD3<Float>(
+            0.03 * sin(time * 0.21) + 0.012 * sin(time * 0.57 + 2),
+            0.012 * sin(time * 0.17 + 1.3) + 0.006 * sin(time * 0.71),
+            0.015 * sin(time * 0.13 + 0.4)
+        ) * (0.6 + 0.8 * surge) * motion
+        // The phone moving: the water lags behind it and sloshes back.
+        var push = -phoneAcceleration
+        let strength = simd_length(push)
+        if strength > 0.6 { push *= 0.6 / strength }
+        let stiffness: Float = 6, ratio: Float = 0.25
+        let steps = max(1, Int((deltaTime / (1.0 / 120)).rounded(.up)))
+        let stepTime = deltaTime / Float(steps)
+        for _ in 0..<steps {
+            let spring = -stiffness * sloshOffset - 2 * ratio * sqrt(stiffness) * sloshVelocity
+            sloshVelocity += (spring + push * 9.81 * 0.06 * motion) * stepTime
+            sloshOffset += sloshVelocity * stepTime
+        }
+        if simd_length(sloshOffset) > 0.06 { sloshOffset *= 0.06 / simd_length(sloshOffset) }
+        for layer in debris {
+            var base = layer.base
+            if layer.followsCamera { base.z = cameraZ - 0.35 }
+            layer.entity.position = base + (current + sloshOffset) * layer.parallax
+        }
+    }
+
+    /// Specks stirred up in the fish's wake: `position` where she is, `speed` how fast (m/s).
+    func stir(at position: SIMD3<Float>, speed: Float) {
+        guard let wake, var particles = wake.components[ParticleEmitterComponent.self] else { return }
+        wake.position = position
+        let amount = easesOff ? 0 : min(max(debrisAmount, 0), 2)
+        // In steps, so the emitter isn't reset every frame.
+        let level: Float = speed > 0.5 ? 3 : speed > 0.25 ? 2 : speed > 0.12 ? 1 : 0
+        let emitting = level > 0 && amount > 0
+        let rate = 40 * level * amount
+        guard emitting != particles.isEmitting || (emitting && abs(rate - particles.mainEmitter.birthRate) > 1) else { return }
+        particles.isEmitting = emitting
+        if emitting { particles.mainEmitter.birthRate = rate }
+        wake.components.set(particles)
+    }
+
+    private func setDebrisAmount(_ amount: Float) {
+        guard amount != debrisAmount else { return }
+        debrisAmount = amount
+        for layer in debris {
+            guard var particles = layer.entity.components[ParticleEmitterComponent.self] else { continue }
+            particles.mainEmitter.birthRate = layer.birthRate * min(max(amount, 0), 2)
+            layer.entity.components.set(particles)
+        }
     }
 
     // MARK: - Lighting
 
     private func addLights(to scene: Entity) {
         let sun = DirectionalLight()
-        sun.light.color = UIColor(red: 0.75, green: 0.93, blue: 1.0, alpha: 1)
+        sun.light.color = Self.uiColor(Self.sunColor)
         sun.light.intensity = 4000
         sun.shadow = DirectionalLightComponent.Shadow(maximumDistance: 2, depthBias: 1)
         sun.look(at: .zero, from: [0.1, 1, 0.25], relativeTo: nil)
@@ -457,14 +626,15 @@ final class UnderwaterSceneController {
         self.sun = sun
 
         let fill = DirectionalLight()
-        fill.light.color = UIColor(red: 0.2, green: 0.55, blue: 0.75, alpha: 1)
+        fill.light.color = Self.uiColor(Self.fillColor)
         fill.light.intensity = 1000
         fill.look(at: .zero, from: [-0.3, -0.2, 1], relativeTo: nil)
         scene.addChild(fill)
+        self.fill = fill
 
         for phase: Float in [0, 2.1, 4.3] {
             let spot = SpotLight()
-            spot.light.color = UIColor(red: 0.8, green: 0.97, blue: 1.0, alpha: 1)
+            spot.light.color = Self.uiColor(Self.spotColor)
             spot.light.innerAngleInDegrees = 4
             spot.light.outerAngleInDegrees = 11
             spot.light.attenuationRadius = 2
@@ -483,13 +653,14 @@ final class UnderwaterSceneController {
         let materials: (enabled: any Material, disabled: any Material)
         do {
             guard let library else { throw CocoaError(.featureUnsupported) }
-            materials = (
-                try CustomMaterial(surfaceShader: .init(named: "backdropSurface", in: library), lightingModel: .unlit),
-                try CustomMaterial(
-                    surfaceShader: .init(named: "backdropBaseSurface", in: library),
-                    lightingModel: .unlit
-                )
+            var enabled = try CustomMaterial(surfaceShader: .init(named: "backdropSurface", in: library), lightingModel: .unlit)
+            var disabled = try CustomMaterial(
+                surfaceShader: .init(named: "backdropBaseSurface", in: library),
+                lightingModel: .unlit
             )
+            withPalette(&enabled)
+            withPalette(&disabled)
+            materials = (enabled, disabled)
         } catch {
             logger.error("Backdrop shader unavailable: \(error.localizedDescription)")
             materials = (fallback, fallback)
@@ -566,6 +737,66 @@ final class UnderwaterSceneController {
         for (light, _) in dapples {
             light.isEnabled = enabled
         }
+    }
+
+    // MARK: - Look
+
+    /// The water's colour: the palette texture every scene material reads, and the lights and specks.
+    private func setLook(_ newLook: SceneLook) {
+        guard newLook.water != look.water || newLook.brightness != look.brightness else { return }
+        look = newLook
+        if let paletteTexture, let image = Self.paletteImage(look) {
+            do {
+                try paletteTexture.replace(withImage: image, options: Self.paletteOptions)
+            } catch {
+                logger.error("Could not recolour the water: \(error.localizedDescription)")
+            }
+        }
+        sun?.light.color = Self.uiColor(look.light(Self.sunColor))
+        fill?.light.color = Self.uiColor(look.light(Self.fillColor))
+        for (light, _) in dapples {
+            light.light.color = Self.uiColor(look.light(Self.spotColor))
+        }
+        for layer in debris {
+            guard var particles = layer.entity.components[ParticleEmitterComponent.self] else { continue }
+            let color = look.light(Self.speckColor) * layer.brightness
+            particles.mainEmitter.color = .constant(.single(Self.uiColor(color, alpha: layer.alpha)))
+            layer.entity.components.set(particles)
+        }
+        if let wake, var particles = wake.components[ParticleEmitterComponent.self] {
+            particles.mainEmitter.color = .constant(.single(Self.uiColor(look.light(Self.speckColor), alpha: 0.45)))
+            wake.components.set(particles)
+        }
+    }
+
+    private func withPalette(_ material: inout CustomMaterial) {
+        if let paletteTexture { material.custom.texture = .init(paletteTexture) }
+    }
+
+    private static let paletteOptions = TextureResource.CreateOptions(semantic: .raw, mipmapsMode: .none)
+
+    /// 5 x 1 texels: deep, mid, shallow water, rays, and magenta marking it (WaterPalette).
+    private static func paletteImage(_ look: SceneLook) -> CGImage? {
+        let colors = [look.deepWater, look.midWater, look.shallowWater, look.rays, SIMD3<Float>(1, 0, 1)]
+        var bytes: [UInt8] = []
+        for color in colors {
+            for value in [color.x, color.y, color.z] {
+                bytes.append(UInt8((min(max(value, 0), 1) * 255).rounded()))
+            }
+            bytes.append(255)
+        }
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData),
+              let space = CGColorSpace(name: CGColorSpace.linearSRGB) else { return nil }
+        return CGImage(
+            width: colors.count, height: 1, bitsPerComponent: 8, bitsPerPixel: 32,
+            bytesPerRow: 4 * colors.count, space: space,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+        )
+    }
+
+    private static func uiColor(_ color: SIMD3<Float>, alpha: CGFloat = 1) -> UIColor {
+        UIColor(red: CGFloat(color.x), green: CGFloat(color.y), blue: CGFloat(color.z), alpha: alpha)
     }
 
     private func setShadowsEnabled(_ enabled: Bool) {

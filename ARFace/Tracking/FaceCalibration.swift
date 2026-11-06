@@ -14,6 +14,10 @@ import Observation
 /// 3. **Lip seal**: "jaw down, lips closed" arrives as jawOpen and mouthClose together. The fish's
 ///    jawOpen is a deep cartoon gape, so a strong mouthClose stretches the lips a long way; instead,
 ///    most of the matched pair becomes less jaw (the jaw comes up), and the lips still meet.
+/// 4. **Gaze correction**: the performer mostly looks at a monitor below the camera, so their eyes
+///    read as looking down. That much look down (eyeLookDown*) counts as straight ahead: the fish
+///    looks straight out when they look at the monitor, and up and down from there. (Center face
+///    leaves the eyes' look alone; it would only cut the looks off at rest.)
 @Observable
 final class FaceCalibration {
     static let shared = FaceCalibration()
@@ -27,6 +31,8 @@ final class FaceCalibration {
     var lipSeal: Float = 0.75 { didSet { save() } }
     /// 0 = off; 1 = a full pucker removes all funnel.
     var puckerPriority: Float = 1 { didSet { save() } }
+    /// 0 = off; how far down (eyeLookDown, 0...1) the performer looks to see straight ahead.
+    var gazeCorrection: Float = 0 { didSet { save() } }
 
     @ObservationIgnored private var samples: [[ARFaceAnchor.BlendShapeLocation: Float]] = []
     @ObservationIgnored private var captureStart = Date.distantPast
@@ -75,7 +81,7 @@ final class FaceCalibration {
     func adjusted(_ raw: [ARFaceAnchor.BlendShapeLocation: Float]) -> [ARFaceAnchor.BlendShapeLocation: Float] {
         var weights = raw
         if enabled, !rest.isEmpty {
-            for (location, value) in raw {
+            for (location, value) in raw where !Self.gazeLocations.contains(location) {
                 guard let resting = rest[location], resting < 0.95 else { continue }
                 weights[location] = max(0, (value - resting) / (1 - resting))
             }
@@ -89,8 +95,23 @@ final class FaceCalibration {
         let seal = min(jaw, close) * min(max(lipSeal, 0), 1)
         weights[.jawOpen] = jaw - seal
         weights[.mouthClose] = close - seal
+        let correction = min(max(gazeCorrection, 0), 1)
+        if correction > 0 {
+            for (down, up) in [(ARFaceAnchor.BlendShapeLocation.eyeLookDownLeft, ARFaceAnchor.BlendShapeLocation.eyeLookUpLeft),
+                               (.eyeLookDownRight, .eyeLookUpRight)] {
+                guard let looksDown = weights[down], let looksUp = weights[up] else { continue }
+                let look = looksDown - looksUp - correction   // + down, - up, from the corrected straight
+                weights[down] = max(look, 0)
+                weights[up] = max(-look, 0)
+            }
+        }
         return weights
     }
+
+    private static let gazeLocations: Set<ARFaceAnchor.BlendShapeLocation> = [
+        .eyeLookDownLeft, .eyeLookDownRight, .eyeLookUpLeft, .eyeLookUpRight,
+        .eyeLookInLeft, .eyeLookInRight, .eyeLookOutLeft, .eyeLookOutRight,
+    ]
 
     private func save() {
         let stored: [String: Any] = [
@@ -98,6 +119,7 @@ final class FaceCalibration {
             "enabled": enabled,
             "lipSeal": Double(lipSeal),
             "puckerPriority": Double(puckerPriority),
+            "gazeCorrection": Double(gazeCorrection),
         ]
         UserDefaults.standard.set(stored, forKey: Self.defaultsKey)
     }
@@ -112,5 +134,6 @@ final class FaceCalibration {
         enabled = stored["enabled"] as? Bool ?? true
         lipSeal = Float(stored["lipSeal"] as? Double ?? 0.75)
         puckerPriority = Float(stored["puckerPriority"] as? Double ?? 1)
+        gazeCorrection = Float(stored["gazeCorrection"] as? Double ?? 0)
     }
 }

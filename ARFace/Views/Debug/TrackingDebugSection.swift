@@ -34,6 +34,15 @@ struct TrackingDebugSection: View {
         LabeledContent("Pucker priority") {
             Slider(value: $calibration.puckerPriority, in: 0...1)
         }
+        VStack(alignment: .leading) {
+            LabeledContent("Gaze correction") {
+                Text("\(calibration.gazeCorrection, specifier: "%.2f")").monospacedDigit()
+            }
+            Slider(value: $calibration.gazeCorrection, in: 0...1) { Text("Gaze correction") }
+            Text("How far down the performer looks (at a monitor under the camera) for the fish to look straight out.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
 
         Stepper("Top blend shapes: \(blendShapeCount)", value: $blendShapeCount, in: 4...52, step: 4)
 

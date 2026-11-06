@@ -53,6 +53,7 @@ struct ContentView: View {
                     .modifier(CanvasOrientationEffect(isUpsideDown: tracker.isPhoneUpsideDown))
                     .overlay(alignment: .bottomTrailing) {
                         VStack(spacing: 12) {
+                            if isAvatarReady { hideShowButton }
                             if isAvatarReady, !avatarSession.availableAccessories.isEmpty { accessoriesMenu }
                             settingsButton
                         }
@@ -71,6 +72,7 @@ struct ContentView: View {
         .background { ExternalDisplayAccessoryRegistrar().frame(width: 0, height: 0) }
         .sheet(isPresented: $showBluetooth) { BluetoothControlView(showsDone: true) }
         .onAppear {
+            bluetooth.start()   // the control link, ready by itself in either mode
             tracker.setDebugEnabled(avatarSession.showDebug)
             if !bluetooth.isControlMode {
                 tracker.start()
@@ -97,8 +99,9 @@ struct ContentView: View {
             if phase == .background {
                 bluetooth.stop()
                 tracker.stop()
-            } else if phase == .active, !bluetooth.isControlMode {
-                tracker.start()
+            } else if phase == .active {
+                bluetooth.start()
+                if !bluetooth.isControlMode { tracker.start() }
             }
         }
     }
@@ -112,15 +115,35 @@ struct ContentView: View {
             moveButton(.loop, systemImage: "arrow.clockwise", label: "Loop")
             moveButton(.blush, systemImage: "heart", label: "Blush")
             moveButton(.bubbles, systemImage: "bubbles.and.sparkles", label: "Blow bubbles")
-            // One button: hides the fish, or shows her again while she's hidden.
-            if avatarSession.fishHidden {
-                moveButton(.show, systemImage: "eye", label: "Show")
-            } else {
-                moveButton(.hide, systemImage: "eye.slash", label: "Hide")
-            }
+            gesturesMenu
         }
         .padding(.leading, 16)
         .padding(.bottom, 24)
+    }
+
+    /// Gestures: staring into the lens, shush, my lips are sealed.
+    private var gesturesMenu: some View {
+        Menu {
+            Button("Stare", systemImage: "eyes") { avatarSession.pendingMoves.append(.stare) }
+            Button("Shush", systemImage: "hand.point.up") { avatarSession.pendingMoves.append(.shush) }
+            Button("My lips are sealed", systemImage: "mouth") { avatarSession.pendingMoves.append(.sealed) }
+        } label: {
+            Image(systemName: "hand.raised")
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Gestures")
+    }
+
+    /// One button: hides the fish, or shows her again while she's hidden.
+    @ViewBuilder private var hideShowButton: some View {
+        if avatarSession.fishHidden {
+            moveButton(.show, systemImage: "eye", label: "Show")
+        } else {
+            moveButton(.hide, systemImage: "eye.slash", label: "Hide")
+        }
     }
 
     private func moveButton(_ move: SwimMove, systemImage: String, label: String) -> some View {

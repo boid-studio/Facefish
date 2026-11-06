@@ -4,17 +4,45 @@ using namespace metal;
 
 constant int kWaveCount = 8;   // fewer waves = cheaper caustics; 8 still looks organic
 
-// Water colour by world height; shared by the backdrop and distance fog so they meet seamlessly.
-static half3 waterColor(float y) {
-    float t = saturate((y + 0.7) / 1.4);
-    half3 deep = half3(0.0, 0.05, 0.14);
-    half3 mid = half3(0.02, 0.26, 0.44);
-    half3 shallow = half3(0.18, 0.62, 0.78);
-    return t < 0.6 ? mix(deep, mid, half(t / 0.6)) : mix(mid, shallow, half((t - 0.6) / 0.4));
+// The water's colours (SceneLook, the control app's Scene tab): the depth gradient and the light
+// rays. Each material carries them in its custom texture, 5 x 1 texels: deep, mid, shallow, rays,
+// and magenta to mark it (without it, the sea blue the scene was designed in).
+struct WaterPalette {
+    half3 deep, mid, shallow, rays;
+};
+
+static WaterPalette defaultPalette() {
+    WaterPalette p;
+    p.deep = half3(0.0, 0.05, 0.14);
+    p.mid = half3(0.02, 0.26, 0.44);
+    p.shallow = half3(0.18, 0.62, 0.78);
+    p.rays = half3(0.35, 0.7, 0.8);
+    return p;
 }
 
-static half3 underwaterBackdrop(float3 position, float time) {
-    half3 color = waterColor(position.y);
+template <typename Texture>
+static WaterPalette waterPalette(Texture palette) {
+    constexpr sampler s(coord::pixel, address::clamp_to_edge, filter::nearest);
+    if (palette.get_width() < 5) return defaultPalette();
+    half3 marker = palette.sample(s, float2(4.5, 0.5)).rgb;
+    if (any(abs(marker - half3(1.0, 0.0, 1.0)) > half3(0.1))) return defaultPalette();
+    WaterPalette p;
+    p.deep = palette.sample(s, float2(0.5, 0.5)).rgb;
+    p.mid = palette.sample(s, float2(1.5, 0.5)).rgb;
+    p.shallow = palette.sample(s, float2(2.5, 0.5)).rgb;
+    p.rays = palette.sample(s, float2(3.5, 0.5)).rgb;
+    return p;
+}
+
+// Water colour by world height; shared by the backdrop and the fish's haze so they match.
+static half3 waterColor(float y, WaterPalette palette) {
+    float t = saturate((y + 0.7) / 1.4);
+    return t < 0.6 ? mix(palette.deep, palette.mid, half(t / 0.6))
+                   : mix(palette.mid, palette.shallow, half((t - 0.6) / 0.4));
+}
+
+static half3 underwaterBackdrop(float3 position, float time, WaterPalette palette) {
+    half3 color = waterColor(position.y, palette);
     float u = position.x;
     float rays = 0;
     rays += pow(saturate(sin(u * 23.0 + time * 0.23) * 0.5 + 0.5), 6.0);
@@ -22,7 +50,7 @@ static half3 underwaterBackdrop(float3 position, float time) {
     rays += pow(saturate(sin(u * 37.3 + time * 0.31 + 4.1) * 0.5 + 0.5), 10.0) * 0.5;
     rays += pow(saturate(sin(u * 51.9 - time * 0.27 + 2.6) * 0.5 + 0.5), 12.0) * 0.4;
     float rayFade = pow(saturate((position.y + 0.5) / 1.2), 2.0);
-    return color + half3(0.35, 0.7, 0.8) * half(rays * rayFade * 0.35);
+    return color + palette.rays * half(rays * rayFade * 0.35);
 }
 
 // Sunlight refracted through a wavy surface: brightness ~ 1/|det J| of the refraction map,
@@ -47,15 +75,15 @@ static half3 caustics(float2 p, float time, float focus) {
 
 // Seen through water: reds are absorbed a little and the water's own blue scatters in.
 // `tintScale` (the material's tint brightness) scales the scatter with the material.
-static half3 underwaterTint(half3 color, float3 position, half tintScale) {
+static half3 underwaterTint(half3 color, float3 position, half tintScale, WaterPalette palette) {
     // Reds absorbed, and a slow shimmer of brightness as surface light passes over.
     half3 tinted = color * half3(0.86, 0.96, 1.0);
-    return mix(tinted, waterColor(position.y + 0.3), half(0.06));
+    return mix(tinted, waterColor(position.y + 0.3, palette), half(0.06));
 }
 
-static half3 waterScatter(float3 position, half tintScale, float time) {
+static half3 waterScatter(float3 position, half tintScale, float time, WaterPalette palette) {
     float flicker = 0.85 + 0.15 * sin(time * 0.9 + position.x * 6.0) * sin(time * 0.53 + position.y * 4.0 + 1.3);
-    return waterColor(position.y + 0.3) * half(0.07 * flicker) * tintScale;
+    return waterColor(position.y + 0.3, palette) * half(0.07 * flicker) * tintScale;
 }
 
 // PBR passthrough that adds caustic light on upward-facing surfaces.
@@ -72,8 +100,9 @@ static void causticSurfaceImpl(realitykit::surface_parameters params, float4 cus
 
     float3 position = params.geometry().world_position();
     half tintScale = half(dot(float3(material.base_color_tint()), float3(0.333)));
-    baseColor = underwaterTint(baseColor, position, tintScale);
-    emissive += waterScatter(position, tintScale, params.uniforms().time());
+    WaterPalette palette = waterPalette(tex.custom());
+    baseColor = underwaterTint(baseColor, position, tintScale, palette);
+    emissive += waterScatter(position, tintScale, params.uniforms().time(), palette);
     float3 normal = normalize(params.geometry().normal());
     float facing = saturate(normal.y);
     half3 light = caustics(position.xz * custom.x, params.uniforms().time() * 0.5 * custom.w, custom.y);
@@ -187,7 +216,7 @@ void bubbleSurface(realitykit::surface_parameters params) {
 
 [[visible]]
 void backdropBaseSurface(realitykit::surface_parameters params) {
-    half3 color = waterColor(params.geometry().world_position().y);
+    half3 color = waterColor(params.geometry().world_position().y, waterPalette(params.textures().custom()));
     params.surface().set_base_color(color);
     params.surface().set_emissive_color(color);
 }
@@ -198,7 +227,7 @@ void backdropSurface(realitykit::surface_parameters params) {
     float3 position = params.geometry().world_position();
     float time = params.uniforms().time();
 
-    half3 color = underwaterBackdrop(position, time);
+    half3 color = underwaterBackdrop(position, time, waterPalette(params.textures().custom()));
 
     params.surface().set_base_color(color);
     params.surface().set_emissive_color(color);
@@ -230,7 +259,7 @@ void faceBodyBend(realitykit::geometry_parameters params) {
 // `tuning` = 0 for no caustics, else packed frequency, speed, intensity and angle (see
 // UnderwaterSceneController).
 static half3 faceCaustics(thread half3 &baseColor, float tuning, float3 position, float3 normal,
-                          half tintScale, float t) {
+                          half tintScale, float t, WaterPalette palette) {
     // Mixed-radix unpack of ((freq * 81 + speed) * 61 + intensity) * 25 + angle.
     float angleStep = fmod(tuning, 25.0);
     float rest = floor(tuning / 25.0);
@@ -250,7 +279,7 @@ static half3 faceCaustics(thread half3 &baseColor, float tuning, float3 position
     float facing = saturate(dot(normal, toLight));
     half3 emissive = baseColor * light * half3(0.8, 0.97, 1.0) * half(strength * facing);
     baseColor *= half(1.0 - 0.25 * saturate(strength));  // a little darker between the lines
-    return emissive + waterScatter(position, tintScale, t);
+    return emissive + waterScatter(position, tintScale, t, palette);
 }
 
 // Strong caustics on the fish's body (faceCaustics).
@@ -270,8 +299,9 @@ void faceCausticSurface(realitykit::surface_parameters params) {
     float3 position = params.geometry().world_position();
     float3 normal = normalize(params.geometry().normal());
     half tintScale = half(dot(float3(material.base_color_tint()), float3(0.333)));
-    baseColor = underwaterTint(baseColor, position, tintScale);
-    half3 emissive = faceCaustics(baseColor, custom.z, position, normal, tintScale, params.uniforms().time());
+    WaterPalette palette = waterPalette(tex.custom());
+    baseColor = underwaterTint(baseColor, position, tintScale, palette);
+    half3 emissive = faceCaustics(baseColor, custom.z, position, normal, tintScale, params.uniforms().time(), palette);
 
     // Blush (custom.w, 0...1): rosy cheeks under the eyes. Model space keeps Blender's axes
     // (+X the fish's left, -Y forward, +Z up); only the front of the face, not the back of the head.
@@ -325,8 +355,9 @@ void accessorySurface(realitykit::surface_parameters params) {
     float3 position = params.geometry().world_position();
     float3 normal = normalize(params.geometry().normal());
     half tintScale = half(dot(float3(material.base_color_tint()), float3(0.333)));
-    baseColor = underwaterTint(baseColor, position, tintScale);
-    half3 emissive = faceCaustics(baseColor, custom.z, position, normal, tintScale, params.uniforms().time());
+    WaterPalette palette = waterPalette(tex.custom());
+    baseColor = underwaterTint(baseColor, position, tintScale, palette);
+    half3 emissive = faceCaustics(baseColor, custom.z, position, normal, tintScale, params.uniforms().time(), palette);
 
     auto surface = params.surface();
     surface.set_base_color(baseColor);

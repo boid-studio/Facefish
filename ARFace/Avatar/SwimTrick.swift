@@ -8,7 +8,7 @@ import simd
 /// Like a real fish, it works the fins first (a wind-up against the move), then the body goes.
 /// Works in the fish's own frame: +Z forward (toward the camera at rest), +Y up, +X its left.
 struct SwimTrick {
-    enum Kind { case spin, loop, blush, bubbles }
+    enum Kind { case spin, loop, blush, bubbles, shush, sealed }
 
     /// What the move contributes this frame.
     struct Pose {
@@ -25,8 +25,12 @@ struct SwimTrick {
         var steer: Float
         /// The body wave (mesh units at the tail).
         var bend: Float
-        /// Side fins over the eyes (fish's left, right), 0...1.
+        /// Side fins over the eyes (fish's left, right), 0...1, or in `finPose`.
         var cover = SIMD2<Float>(repeating: 0)
+        /// The pose a side fin takes as its `cover` goes to 1 (the blush's, by default).
+        var finPose: FinPose = .cover
+        /// Lips pressed together and rolled in (sealed), 0...1, under the mouth takeover.
+        var seal: Float = 0
         /// Rosy cheeks, 0...1.
         var blush: Float = 0
         /// The mouth taken over (0...1) for puffed cheeks and puckered lips, and bubbles per second.
@@ -53,6 +57,8 @@ struct SwimTrick {
         case .loop: duration = Float.random(in: 1.3...1.5)
         case .blush: duration = 3.0
         case .bubbles: duration = BubbleBlow.duration
+        case .shush: duration = 3.4
+        case .sealed: duration = 4.2
         }
     }
 
@@ -65,6 +71,8 @@ struct SwimTrick {
         case .loop: return loop(u)
         case .blush: return blush(elapsed)
         case .bubbles: return blowBubbles(elapsed)
+        case .shush: return shush(elapsed)
+        case .sealed: return sealed(elapsed)
         }
     }
 
@@ -169,6 +177,57 @@ struct SwimTrick {
             bubbles: blow.bubbles
         )
     }
+
+    /// Shush: a side fin folds into a "finger" and comes up in front of pursed lips, the head
+    /// leans in with two little "shh" nods and a wisp of bubbles, then the fin goes back down.
+    /// `t` is seconds (3.4 in all).
+    private func shush(_ t: Float) -> Pose {
+        let up = Self.smootherstep(Self.ramp(t, 0.1, 0.75)) * (1 - Self.smootherstep(Self.ramp(t, 2.6, 3.25)))
+        let lips = Self.smoothstep(Self.ramp(t, 0, 0.45)) * (1 - Self.smoothstep(Self.ramp(t, 2.6, 3.2)))
+        let shh = Self.ramp(t, 0.9, 2.3)
+        let nod = 0.05 * max(0, sin(2 * .pi * 1.4 * (t - 0.9))) * (shh > 0 && shh < 1 ? 1 : 0)
+        let pitch = 0.07 * up + nod                       // + is nose down: leaning in
+        let roll = direction * 0.06 * up
+        return Pose(
+            rotation: simd_quatf(angle: pitch, axis: [1, 0, 0]) * simd_quatf(angle: roll, axis: [0, 0, 1]),
+            offset: SIMD3<Float>(0, -0.004, 0.006) * up,
+            yaw: 0, pitch: pitch, effort: 0.1 * up,
+            steer: 0,
+            bend: 0,
+            cover: direction > 0 ? SIMD2(up, 0) : SIMD2(0, up),
+            finPose: .shush,
+            mouthTakeover: lips,
+            pucker: 0.7,
+            bubbles: shh > 0 && shh < 1 ? 7 : 0
+        )
+    }
+
+    /// My lips are sealed: a side fin, folded, comes to the far corner of the mouth and zips it
+    /// shut, drawn across the lips while they press and roll in behind it; the fin goes, and the
+    /// lips stay sealed for a smug moment with a little nod before they relax. `t` is seconds.
+    private func sealed(_ t: Float) -> Pose {
+        let inOut = Self.smootherstep(Self.ramp(t, 0.05, 0.65)) * (1 - Self.smootherstep(Self.ramp(t, 1.6, 2.15)))
+        let zip = Self.smootherstep(Self.ramp(t, 0.7, 1.55))
+        let lips = Self.smoothstep(Self.ramp(t, 0.5, 0.8)) * (1 - Self.smoothstep(Self.ramp(t, 3.5, 4.1)))
+        let seal = Self.smoothstep(Self.ramp(t, 0.7, 1.6)) * (1 - Self.smoothstep(Self.ramp(t, 3.5, 4.1)))
+        let smug = Self.smoothstep(Self.ramp(t, 2.0, 2.4)) * (1 - Self.smoothstep(Self.ramp(t, 3.3, 3.8)))
+        let nod = 0.06 * max(0, sin(.pi * Self.ramp(t, 2.4, 2.9)))
+        let pitch = 0.04 * inOut - 0.05 * smug + nod      // a little chin-up when sealed
+        let roll = -direction * 0.08 * smug
+        return Pose(
+            rotation: simd_quatf(angle: pitch, axis: [1, 0, 0]) * simd_quatf(angle: roll, axis: [0, 0, 1]),
+            offset: .zero,
+            yaw: 0, pitch: pitch, effort: 0.12 * inOut,
+            steer: 0,
+            bend: 0,
+            cover: direction > 0 ? SIMD2(inOut, 0) : SIMD2(0, inOut),
+            finPose: FinPose.zip(zip),
+            seal: seal,
+            mouthTakeover: lips
+        )
+    }
+
+    private static func smootherstep(_ x: Float) -> Float { x * x * x * (x * (x * 6 - 15) + 10) }
 
     /// Fins straight to full power, easing off over the last third.
     private static func effort(_ u: Float) -> Float {

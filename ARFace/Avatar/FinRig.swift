@@ -99,9 +99,17 @@ final class FinRig {
     /// -1...1, a turn the fish is about to make (+ toward its left): the fins steer before the
     /// body turns. The tail flexes toward it, the outside side fin paddles, the inside one brakes.
     var steer: Float = 0
-    /// 0...1 per side (fish's left, right): the side fin swings up and folds over the eye, like a
-    /// hand hiding it (a blush). Its usual motion fades out meanwhile.
+    /// 0...1 per side (fish's left, right): the side fin takes up a gesture pose (`gesture`), by
+    /// default over the eye, like a hand hiding it (a blush). Its usual motion fades out meanwhile.
     var cover = SIMD2<Float>(repeating: 0)
+    /// The pose each side fin takes as `cover` goes to 1 (fish's left, right).
+    var gesture: [FinPose] = [.cover, .cover]
+    /// Extra room (model units) a side fin keeps from the face over its eye when covering it (fish's
+    /// left, right): for something she wears there, such as a mask (Accessory.coverClearance).
+    var coverClearance = SIMD2<Float>(repeating: 0)
+    /// Out from the head's middle through the left eye, in the skeleton's space: the right fin's is
+    /// mirrored like its moves.
+    private static let coverOutward = simd_normalize(SIMD3<Float>(0.604, 0.290, 0.742))
     /// How hard the side fins paddle while swimming under their own power (1 = as on a lap).
     var paddleBoost: Float = 1
     /// -1...1: both side fins flap together (a laugh's "ha"s).
@@ -117,19 +125,6 @@ final class FinRig {
     var finWaveSpeed: Float = 1
 
     private let logger = Logger(subsystem: "ARFace", category: "FinRig")
-
-    /// The left side fin over its eye (cover = 1). Solved against the head, eyeball, open lid and
-    /// lashes so it covers the eye seen from the camera, lies close along the face, and never cuts
-    /// into the face on the way there (the lids stay open meanwhile; see LidRig.maxClosed). Turns are rotation vectors (axis * radians): the root's in the skeleton's
-    /// space, the middle and tip joints' in their own. Stretch scales the root joint (local Y runs
-    /// along the fin); the move is the root's. The swing turns the root out of the way partway
-    /// (most at cover 0.5, none at either end).
-    private static let coverRootTurn = SIMD3<Float>(1.6760, 0.2255, 2.2613)
-    private static let coverRootMove = SIMD3<Float>(0.0684, 0.0164, 0.3618)
-    private static let coverStretch = SIMD3<Float>(0.7007, 1.1829, 0.6985)
-    private static let coverMiddleBend = SIMD3<Float>(-0.4178, 0.1392, -0.2766)
-    private static let coverTipBend = SIMD3<Float>(-0.6634, -0.9847, -0.1170)
-    private static let coverSwing = SIMD3<Float>(2.0002, 0.0748, -1.0005)
 
     /// A rotation from a rotation vector (axis * radians).
     private static func turn(_ vector: SIMD3<Float>) -> simd_quatf {
@@ -365,7 +360,7 @@ final class FinRig {
                     transform.rotation = transform.rotation
                         * simd_quatf(angle: pose.pectoralFlap[side][index], axis: [1, 0, 0])
                         * simd_quatf(angle: pose.pectoralSweep[side][index], axis: [0, 0, 1])
-                    // Over the eye (see coverRootTurn): the fin turns about its root (in the
+                    // A gesture (FinPose, e.g. over the eye): the fin turns about its root (in the
                     // skeleton's space: +Y up, +Z forward, +X the fish's left), stretches, and bends
                     // at its middle and tip joints to lie along the face. On the way it comes up
                     // edge-on from below and opens over the eye, clear of the face all along.
@@ -374,12 +369,16 @@ final class FinRig {
                         // The right fin mirrors the left: turns (x, -y, -z), moves (-x, y, z).
                         let mirror = side == 0 ? SIMD3<Float>(1, 1, 1) : SIMD3<Float>(1, -1, -1)
                         if root {
-                            transform.rotation = Self.turn(Self.coverSwing * mirror * sin(.pi * cover))
-                                * Self.turn(Self.coverRootTurn * mirror * cover) * transform.rotation
-                            transform.scale *= 1 + (Self.coverStretch - 1) * cover
-                            transform.translation += Self.coverRootMove * SIMD3(side == 0 ? 1 : -1, 1, 1) * cover
+                            let pose = gesture[side]
+                            transform.rotation = Self.turn(pose.swing * mirror * sin(.pi * cover))
+                                * Self.turn(pose.rootTurn * mirror * cover) * transform.rotation
+                            transform.scale *= 1 + (pose.stretch - 1) * cover
+                            // Off a mask over the eye.
+                            let clearance = pose.clearsEye ? Self.coverOutward * coverClearance[side] : .zero
+                            let moves = SIMD3<Float>(side == 0 ? 1 : -1, 1, 1)
+                            transform.translation += ((pose.rootMove + clearance) * cover + pose.arc * sin(.pi * cover)) * moves
                         } else {
-                            let bend = index == 0 ? Self.coverMiddleBend : Self.coverTipBend
+                            let bend = index == 0 ? gesture[side].middleBend : gesture[side].tipBend
                             transform.rotation = transform.rotation * Self.turn(bend * mirror * cover)
                         }
                     }
@@ -417,5 +416,69 @@ final class FinRig {
             }
             target.model.components.set(component)
         }
+    }
+}
+
+
+/// A side-fin gesture pose for the fish's left fin (the right one mirrors it), solved against the
+/// head, eyes, lids, lashes, brows, teeth and mask in Blender so it lies close but never cuts in,
+/// on the way there too (tools: the fin-pose solver). Turns are rotation vectors (axis * radians):
+/// the root's in the skeleton's space (+Y up, +Z forward, +X the fish's left), the middle and tip
+/// joints' in their own. Stretch scales the root joint (local Y runs along the fin, Z across the
+/// fan: a small Z folds the fan into a narrow "finger"); the move is the root's. On the way, the
+/// swing turns the root and the arc moves it out of the way (most halfway, none at either end).
+nonisolated struct FinPose: Equatable {
+    var rootTurn: SIMD3<Float>
+    var rootMove: SIMD3<Float>
+    var stretch: SIMD3<Float>
+    var middleBend: SIMD3<Float>
+    var tipBend: SIMD3<Float>
+    var swing: SIMD3<Float>
+    var arc = SIMD3<Float>(repeating: 0)
+    /// Over an eye: kept off a mask there (FinRig.coverClearance).
+    var clearsEye = false
+
+    /// Blush: over the eye, lying along the face (the lids stay open meanwhile; LidRig.maxClosed).
+    static let cover = FinPose(
+        rootTurn: [1.6760, 0.2255, 2.2613], rootMove: [0.0684, 0.0164, 0.3618],
+        stretch: [0.7007, 1.1829, 0.6985], middleBend: [-0.4178, 0.1392, -0.2766],
+        tipBend: [-0.6634, -0.9847, -0.1170], swing: [2.0002, 0.0748, -1.0005], clearsEye: true)
+
+    /// Shush: folded into a "finger", upright in front of pursed lips (pucker 0.7).
+    static let shush = FinPose(
+        rootTurn: [0.6784, -0.0321, 1.8887], rootMove: [-0.4639, -0.3279, 0.8956],
+        stretch: [0.85, 1.15, 0.3], middleBend: [0.4659, 0.4136, -0.4267],
+        tipBend: [-0.7615, 0.1492, -0.2174], swing: [0.0058, -0.1575, -0.3003],
+        arc: [0.2741, -0.1206, 0.0722])
+
+    /// My lips are sealed: folded, its tip drawn along the closed lips from the far mouth corner
+    /// (start) across (middle) to the near one (end), like a zip.
+    static let zipStart = FinPose(
+        rootTurn: [1.4525, 2.3208, 1.8089], rootMove: [-0.2215, 0.0025, 0.5932],
+        stretch: [0.85, 1.15, 0.3], middleBend: [-0.4995, 0.2422, -0.1061],
+        tipBend: [0.2104, -0.0825, 0.1279], swing: [-0.9239, -0.0396, 1.0754],
+        arc: [0.2332, -0.4597, 0.0275])
+    static let zipMiddle = FinPose(
+        rootTurn: [1.7966, 2.3745, 1.8167], rootMove: [0.0402, 0.0127, 0.5119],
+        stretch: [0.85, 1.15, 0.3], middleBend: [-0.5177, 0.4431, -0.2032],
+        tipBend: [0.1905, -0.0236, 0.0765], swing: [-0.9239, -0.0396, 1.0754],
+        arc: [0.2332, -0.4597, 0.0275])
+    static let zipEnd = FinPose(
+        rootTurn: [1.7656, 2.5889, 1.8442], rootMove: [0.1636, 0.0742, 0.3617],
+        stretch: [0.85, 1.15, 0.3], middleBend: [-0.5299, 0.5134, -0.2032],
+        tipBend: [0.4617, 0.1487, 0.031], swing: [0, 0, 0])
+
+    /// Along the zip, 0 (start) ... 1 (end).
+    static func zip(_ u: Float) -> FinPose {
+        let u = min(max(u, 0), 1)
+        return u < 0.5 ? mix(zipStart, zipMiddle, u * 2) : mix(zipMiddle, zipEnd, u * 2 - 1)
+    }
+
+    static func mix(_ a: FinPose, _ b: FinPose, _ t: Float) -> FinPose {
+        func m(_ x: SIMD3<Float>, _ y: SIMD3<Float>) -> SIMD3<Float> { x + (y - x) * t }
+        return FinPose(rootTurn: m(a.rootTurn, b.rootTurn), rootMove: m(a.rootMove, b.rootMove),
+                       stretch: m(a.stretch, b.stretch), middleBend: m(a.middleBend, b.middleBend),
+                       tipBend: m(a.tipBend, b.tipBend), swing: m(a.swing, b.swing), arc: m(a.arc, b.arc),
+                       clearsEye: t < 0.5 ? a.clearsEye : b.clearsEye)
     }
 }

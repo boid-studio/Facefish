@@ -16,6 +16,7 @@ struct AvatarView: View {
     @State private var sceneID = UUID()
     @State private var debugOwnerID = UUID()
     @State private var glassFrame = GlassBubbleFrame()
+    @State private var viewAspect: Float = 0.46
 
     private var avatarDebug: AvatarDebugModel { AvatarSession.shared.avatarDebug }
 
@@ -38,7 +39,7 @@ struct AvatarView: View {
             }
 
             let camera = PerspectiveCamera()
-            camera.camera.fieldOfViewInDegrees = 35
+            camera.camera.fieldOfViewInDegrees = avatarDebug.fieldOfView
             camera.position = [0, 0, avatarDebug.cameraZ]
             content.add(camera)
 
@@ -58,10 +59,24 @@ struct AvatarView: View {
                 underwater.applyCaustics(to: model)
                 let controller = AvatarController(model: model, screenSpaceGlass: screenSpaceGlass)
                 controller.mirrored = mirrored
+                controller.cameraFieldOfView = camera.camera.fieldOfViewInDegrees
+                controller.viewAspect = viewAspect
                 content.add(controller.sceneRoot)
                 updateSubscription = content.subscribe(to: SceneEvents.Update.self) { event in
                     avatarDebug.recordFrame(deltaTime: event.deltaTime)
                     let options = avatarDebug.renderOptions
+                    controller.cameraDistance = camera.position.z   // the zoom
+                    controller.phoneAcceleration = MotionTracker.shared.latest
+                        .map { tracker.correctedMotion($0).acceleration } ?? .zero
+                    controller.motionReaction = avatarDebug.motionReaction
+                    underwater.phoneAcceleration = controller.phoneAcceleration
+                    underwater.cameraZ = camera.position.z
+                    underwater.stir(at: controller.fishPosition, speed: controller.swimSpeed)
+                    controller.cameraFieldOfView = camera.camera.fieldOfViewInDegrees
+                    // A hot phone throttles, and face tracking stutters first: ease off the extras.
+                    let hot = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
+                    underwater.easesOff = hot
+                    glassFrame.update(look: options.look, fringe: !hot)
                     underwater.update(deltaTime: event.deltaTime, options: options)
                     controller.apply(
                         tracker.snapshot(),
@@ -89,8 +104,15 @@ struct AvatarView: View {
         } update: { content in
             for case let camera as PerspectiveCamera in content.entities {
                 camera.position.z = avatarDebug.cameraZ
+                camera.camera.fieldOfViewInDegrees = avatarDebug.fieldOfView
             }
             controller?.mirrored = mirrored
+        }
+        .onGeometryChange(for: Float.self) { proxy in
+            proxy.size.height > 0 ? Float(proxy.size.width / proxy.size.height) : 0.46
+        } action: { aspect in
+            viewAspect = aspect
+            controller?.viewAspect = aspect
         }
         .id(sceneID)
         .overlay {

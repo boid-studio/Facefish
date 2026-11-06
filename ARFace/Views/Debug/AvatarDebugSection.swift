@@ -23,11 +23,21 @@ struct AvatarDebugSection: View {
 
 struct RenderingDebugSection: View {
     @Bindable var model: AvatarDebugModel
+    @Environment(\.self) private var environment
 
     var body: some View {
         LabeledContent("Frame rate") {
             Text("\(model.framesPerSecond, specifier: "%.1f") FPS")
                 .monospacedDigit()
+        }
+        LabeledContent("Phone temperature") {
+            switch ProcessInfo.processInfo.thermalState {
+            case .nominal: Text("Normal")
+            case .fair: Text("Warm")
+            case .serious: Text("Hot: easing off effects").foregroundStyle(.orange)
+            case .critical: Text("Very hot: easing off effects").foregroundStyle(.red)
+            @unknown default: Text("Unknown")
+            }
         }
 
         // Laughing needs a smile, plus squinting eyes or a jaw/voice "ha-ha" rhythm.
@@ -52,6 +62,69 @@ struct RenderingDebugSection: View {
                 Text("\(model.acting, specifier: "%.2f")").monospacedDigit()
             }
             Slider(value: $model.acting, in: 0...1) { Text("Acting") }
+        }
+
+        ColorPicker("Water colour", selection: Binding(
+            get: { Color(.sRGBLinear, red: Double(model.waterColor.x), green: Double(model.waterColor.y), blue: Double(model.waterColor.z)) },
+            set: { color in
+                let resolved = color.resolve(in: environment)
+                model.waterColor = SIMD3(resolved.linearRed, resolved.linearGreen, resolved.linearBlue)
+            }
+        ), supportsOpacity: false)
+        Button("Default water colour") { model.waterColor = SceneLook.defaultWater }
+            .disabled(model.waterColor == SceneLook.defaultWater)
+        Button("Save scene settings") { model.saveScene() }
+        if let saved = model.sceneSavedAt {
+            Text("Saved \(saved.formatted(date: .omitted, time: .shortened)). Loaded at launch.")
+                .font(.caption).foregroundStyle(.secondary)
+        } else {
+            Text("Scene changes are a preview until saved.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        VStack(alignment: .leading) {
+            LabeledContent("White balance") {
+                Text("\(model.whiteBalance, specifier: "%+.2f")").monospacedDigit()
+            }
+            Slider(value: $model.whiteBalance, in: -1...1) { Text("White balance") }
+        }
+        VStack(alignment: .leading) {
+            LabeledContent("Vignette") {
+                Text("\(model.vignette, specifier: "%.2f")  size \(model.vignetteSize, specifier: "%.2f")").monospacedDigit()
+            }
+            Slider(value: $model.vignette, in: 0...1) { Text("Vignette") }
+            Slider(value: $model.vignetteSize, in: 0...1.5) { Text("Vignette size") }
+            Slider(value: $model.vignetteSoftness, in: 0.1...2.5) { Text("Vignette softness") }
+        }
+        VStack(alignment: .leading) {
+            LabeledContent("Background brightness") {
+                Text("\(model.waterBrightness, specifier: "%.2f")").monospacedDigit()
+            }
+            Slider(value: $model.waterBrightness, in: 0...1.3) { Text("Background brightness") }
+        }
+        VStack(alignment: .leading) {
+            LabeledContent("Bob with phone movement") {
+                Text("\(model.motionReaction, specifier: "%.2f")").monospacedDigit()
+            }
+            Slider(value: $model.motionReaction, in: 0...2) { Text("Bob with phone movement") }
+        }
+        VStack(alignment: .leading) {
+            LabeledContent("Debris / water motion") {
+                Text("\(model.debrisAmount, specifier: "%.2f") / \(model.waterMotion, specifier: "%.2f")").monospacedDigit()
+            }
+            Slider(value: $model.debrisAmount, in: 0...2) { Text("Debris in the water") }
+            Slider(value: $model.waterMotion, in: 0...2) { Text("Water motion") }
+        }
+        VStack(alignment: .leading) {
+            LabeledContent("Distortion") {
+                Text("\(model.distortion, specifier: "%.2f")").monospacedDigit()
+            }
+            Slider(value: $model.distortion, in: 0...1) { Text("Distortion") }
+        }
+        VStack(alignment: .leading) {
+            LabeledContent("Field of view") {
+                Text("\(model.fieldOfView, specifier: "%.0f")°").monospacedDigit()
+            }
+            Slider(value: $model.fieldOfView, in: 20...70) { Text("Field of view") }
         }
 
         VStack(alignment: .leading) {

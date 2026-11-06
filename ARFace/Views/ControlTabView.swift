@@ -12,6 +12,12 @@ struct ControlTabView: View {
             Tab("Actions", systemImage: "square.grid.2x2") {
                 ControlActionsView().environment(\.horizontalSizeClass, sizeClass)
             }
+            Tab("Scene", systemImage: "paintpalette") {
+                SceneControlView().environment(\.horizontalSizeClass, sizeClass)
+            }
+            Tab("Accessories", systemImage: "hat.widebrim") {
+                AccessoriesControlView().environment(\.horizontalSizeClass, sizeClass)
+            }
             Tab("Settings", systemImage: "gearshape") {
                 RemoteSettingsView().environment(\.horizontalSizeClass, sizeClass)
             }
@@ -31,7 +37,7 @@ struct RemoteSettingsView: View {
     @AppStorage("remote.faceCalibration") private var faceCalibration = true
     @AppStorage("remote.lipSeal") private var lipSeal = 0.75
     @AppStorage("remote.puckerPriority") private var puckerPriority = 1.0
-    @AppStorage("remote.cameraZ") private var cameraZ = 0.75
+    @AppStorage("remote.gazeCorrection") private var gazeCorrection = 0.0
     @AppStorage("remote.acting") private var acting = 0.0
     @State private var centerFace = CenterFaceState.idle
 
@@ -70,10 +76,11 @@ struct RemoteSettingsView: View {
                         .onChange(of: faceCalibration) { _, v in bluetooth.send(.faceCalibration(v)) }
                     slider("Lip seal", value: $lipSeal, in: 0...1) { .lipSeal(Float($0)) }
                     slider("Pucker priority", value: $puckerPriority, in: 0...1) { .puckerPriority(Float($0)) }
+                    slider("Gaze correction", value: $gazeCorrection, in: 0...1) { .gazeCorrection(Float($0)) }
                 } header: {
                     Text("Tracking")
                 } footer: {
-                    Text("Center face records the performer's relaxed face for 1.5 s on the main app.")
+                    Text("Center face records the performer's relaxed face for 1.5 s on the main app. Gaze correction: how far down the performer looks (at a monitor under the camera) for the fish to look straight out.")
                 }
                 Section {
                     slider("Acting", value: $acting, in: 0...1) { .acting(Float($0)) }
@@ -82,13 +89,10 @@ struct RemoteSettingsView: View {
                 } footer: {
                     Text("0 follows the face as it is. Higher plays it bigger: stronger expressions and head moves, harder fins, and big notes that open the fins wide.")
                 }
-                Section("Rendering") {
-                    slider("Camera Z", value: $cameraZ, in: 0.1...3, unit: " m") { .cameraZ(Float($0)) }
-                }
                 Section {
                     Button("Send all settings") { sendAll() }
                 } footer: {
-                    Text("Pushes every value above, and the accessories, to the main app, e.g. after reconnecting.")
+                    Text("Pushes every value above to the main app, e.g. after reconnecting.")
                 }
             }
             .disabled(!bluetooth.isConnected)
@@ -182,19 +186,13 @@ struct RemoteSettingsView: View {
         bluetooth.send(.faceCalibration(faceCalibration))
         bluetooth.send(.lipSeal(Float(lipSeal)))
         bluetooth.send(.puckerPriority(Float(puckerPriority)))
-        bluetooth.send(.cameraZ(Float(cameraZ)))
+        bluetooth.send(.gazeCorrection(Float(gazeCorrection)))
         bluetooth.send(.acting(Float(acting)))
-        let worn = Set((UserDefaults.standard.string(forKey: "remote.wornAccessories") ?? "").split(separator: ",").map(String.init))
-        for accessory in Accessory.allCases {
-            bluetooth.send(.accessory(accessory, worn.contains(accessory.rawValue)))
-        }
     }
 }
 
 struct ControlActionsView: View {
     @State private var bluetooth = BluetoothControl.shared
-    /// What the fish wears, as last set from here (comma-separated Accessory names); not read back.
-    @AppStorage("remote.wornAccessories") private var wornAccessories = ""
 
     private struct Action: Identifiable {
         let title: String
@@ -210,6 +208,9 @@ struct ControlActionsView: View {
         Action(title: "Loop", systemImage: "arrow.clockwise", command: .loop),
         Action(title: "Blush", systemImage: "heart", command: .blush),
         Action(title: "Blow bubbles", systemImage: "bubbles.and.sparkles", command: .blowBubbles),
+        Action(title: "Stare", systemImage: "eyes", command: .stare),
+        Action(title: "Shush", systemImage: "hand.point.up", command: .shush),
+        Action(title: "My lips are sealed", systemImage: "mouth", command: .sealed),
         Action(title: "Hide", systemImage: "eye.slash", command: .hide),
         Action(title: "Show", systemImage: "eye", command: .show),
     ]
@@ -237,24 +238,6 @@ struct ControlActionsView: View {
                     }
                 }
                 .padding()
-
-                // The hat: what the fish wears.
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("Accessories", systemImage: "hat.widebrim").font(.headline)
-                    ForEach(Accessory.allCases) { accessory in
-                        Toggle(accessory.title, systemImage: accessory.systemImage, isOn: Binding(
-                            get: { wornAccessories.contains(accessory.rawValue) },
-                            set: { on in
-                                var worn = Set(wornAccessories.split(separator: ",").map(String.init))
-                                if on { worn.insert(accessory.rawValue) } else { worn.remove(accessory.rawValue) }
-                                wornAccessories = worn.sorted().joined(separator: ",")
-                                bluetooth.send(.accessory(accessory, on))
-                            }
-                        ))
-                    }
-                }
-                .padding()
-                .disabled(!bluetooth.isConnected)
             }
             .navigationTitle("Actions")
         }

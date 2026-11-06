@@ -1,6 +1,7 @@
 import SwiftUI
 import Observation
 import UIKit
+import simd
 
 @main
 struct ARFaceApp: App {
@@ -20,12 +21,25 @@ struct ARFaceApp: App {
                         case .loop: AvatarSession.shared.pendingMoves.append(.loop)
                         case .blush: AvatarSession.shared.pendingMoves.append(.blush)
                         case .blowBubbles: AvatarSession.shared.pendingMoves.append(.bubbles)
+                        case .stare: AvatarSession.shared.pendingMoves.append(.stare)
+                        case .shush: AvatarSession.shared.pendingMoves.append(.shush)
+                        case .sealed: AvatarSession.shared.pendingMoves.append(.sealed)
                         case .hide: AvatarSession.shared.pendingMoves.append(.hide)
                         case .show: AvatarSession.shared.pendingMoves.append(.show)
                         }
                     }
+                    BluetoothControl.shared.stateProvider = {
+                        let session = AvatarSession.shared
+                        return MainAppState(
+                            scene: session.avatarDebug.sceneSettings,
+                            available: session.availableAccessories,
+                            worn: Accessory.allCases.filter(session.wornAccessories.contains)
+                        )
+                    }
                     BluetoothControl.shared.onSetting = { setting in
                         let calibration = FaceCalibration.shared
+                        // Scene changes from the control app are saved here by themselves.
+                        if setting.isScene { AvatarSession.shared.avatarDebug.saveSceneSoon() }
                         switch setting {
                         case .centerFace: calibration.beginCapture()
                         case .mirror(let on): AvatarSession.shared.mirrored = on
@@ -34,8 +48,24 @@ struct ARFaceApp: App {
                         case .faceCalibration(let on): calibration.enabled = on
                         case .lipSeal(let v): calibration.lipSeal = min(max(v, 0), 1)
                         case .puckerPriority(let v): calibration.puckerPriority = min(max(v, 0), 1)
+                        case .gazeCorrection(let v): calibration.gazeCorrection = min(max(v, 0), 1)
                         case .cameraZ(let v): AvatarSession.shared.avatarDebug.cameraZ = min(max(v, 0.1), 3)
                         case .acting(let v): AvatarSession.shared.avatarDebug.acting = min(max(v, 0), 1)
+                        case .waterColor(let color):
+                            AvatarSession.shared.avatarDebug.waterColor = simd_clamp(color, .zero, .one)
+                        case .whiteBalance(let v): AvatarSession.shared.avatarDebug.whiteBalance = min(max(v, -1), 1)
+                        case .fieldOfView(let v): AvatarSession.shared.avatarDebug.fieldOfView = min(max(v, 15), 90)
+                        case .vignette(let v): AvatarSession.shared.avatarDebug.vignette = min(max(v, 0), 1)
+                        case .vignetteSize(let v): AvatarSession.shared.avatarDebug.vignetteSize = min(max(v, 0), 1.5)
+                        case .vignetteSoftness(let v): AvatarSession.shared.avatarDebug.vignetteSoftness = min(max(v, 0.05), 2.5)
+                        case .waterBrightness(let v): AvatarSession.shared.avatarDebug.waterBrightness = min(max(v, 0), 1.3)
+                        case .causticIntensity(let v): AvatarSession.shared.avatarDebug.causticIntensity = min(max(v, 0), 3)
+                        case .motionReaction(let v): AvatarSession.shared.avatarDebug.motionReaction = min(max(v, 0), 2)
+                        case .debrisAmount(let v): AvatarSession.shared.avatarDebug.debrisAmount = min(max(v, 0), 2)
+                        case .waterMotion(let v): AvatarSession.shared.avatarDebug.waterMotion = min(max(v, 0), 2)
+                        case .distortion(let v): AvatarSession.shared.avatarDebug.distortion = min(max(v, 0), 1)
+                        case .scene(let part, let on): AvatarSession.shared.avatarDebug[scene: part] = on
+                        case .saveScene: AvatarSession.shared.avatarDebug.saveScene()
                         case .accessory(let accessory, let on):
                             if on {
                                 AvatarSession.shared.wornAccessories.insert(accessory)
@@ -68,13 +98,24 @@ final class AvatarSession {
     var pendingMoves: [SwimMove] = []
     /// The fish is backing out of frame or out of sight (HideShow), for the Hide/Show button.
     var fishHidden = false
-    /// What the fish is wearing (the hat button), kept between launches.
-    var wornAccessories: Set<Accessory> = Set(
-        (UserDefaults.standard.stringArray(forKey: "wornAccessories") ?? []).compactMap(Accessory.init(rawValue:))
-    ) {
+    /// What the fish is wearing (the hat button), kept between launches. An accessory new to this
+    /// phone starts as it's worn by default (Accessory.wornByDefault).
+    var wornAccessories: Set<Accessory> = AvatarSession.loadWornAccessories() {
         didSet {
             UserDefaults.standard.set(wornAccessories.map(\.rawValue).sorted(), forKey: "wornAccessories")
         }
+    }
+
+    private static func loadWornAccessories() -> Set<Accessory> {
+        let defaults = UserDefaults.standard
+        var worn = Set((defaults.stringArray(forKey: "wornAccessories") ?? []).compactMap(Accessory.init(rawValue:)))
+        let known = Set(defaults.stringArray(forKey: "knownAccessories") ?? [])
+        for accessory in Accessory.allCases where !known.contains(accessory.rawValue) && accessory.wornByDefault {
+            worn.insert(accessory)
+        }
+        defaults.set(Accessory.allCases.map(\.rawValue), forKey: "knownAccessories")
+        defaults.set(worn.map(\.rawValue).sorted(), forKey: "wornAccessories")
+        return worn
     }
     /// The accessories the loaded fish model has (AvatarController).
     var availableAccessories: [Accessory] = []
@@ -85,6 +126,10 @@ final class AvatarSession {
 /// behind its fins and blowing bubbles (SwimTrick).
 enum SwimMove: CaseIterable {
     case lap, spin, loop, blush, bubbles
+    /// Up to the lens, staring into it with her right eye (Stare).
+    case stare
+    /// A fin "finger" to her lips; zipping her lips shut (SwimTrick).
+    case shush, sealed
     /// Back out of frame and stay hidden, then swim back in (HideShow).
     case hide, show
 }

@@ -16,6 +16,9 @@ import simd
 final class EyeRig {
     /// Radians an eye turns at a full look (eyeLook* = 1).
     var range: Float = 0.45
+    /// Both eyes turned to look a set way, over the tracked look, by `weight` 0...1 (a stare into
+    /// the lens): yaw + toward the fish's left, pitch + down, in radians.
+    var lookOverride: (yaw: Float, pitch: Float, weight: Float) = (0, 0, 0)
 
     private struct Eye {
         let entity: Entity
@@ -78,6 +81,13 @@ final class EyeRig {
             yawR = (weight(.eyeLookInRight) - weight(.eyeLookOutRight)) * range
             pitchL = (weight(.eyeLookDownLeft) - weight(.eyeLookUpLeft)) * range
             pitchR = (weight(.eyeLookDownRight) - weight(.eyeLookUpRight)) * range
+        }
+        let w = min(max(lookOverride.weight, 0), 1)
+        if w > 0 {
+            yawL += (lookOverride.yaw - yawL) * w
+            yawR += (lookOverride.yaw - yawR) * w
+            pitchL += (lookOverride.pitch - pitchL) * w
+            pitchR += (lookOverride.pitch - pitchR) * w
         }
         // Quick, like a real eye, but enough to hide tracking jitter.
         let alpha = Float(1 - exp(-deltaTime / (weight == nil ? 0.15 : 0.02)))

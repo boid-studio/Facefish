@@ -1,5 +1,6 @@
 import Foundation
 import Metal
+import QuartzCore
 import OSLog
 import RealityKit
 import simd
@@ -21,6 +22,35 @@ nonisolated final class GlassBubbleFrame: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return spheres
+    }
+
+    /// The scene's look for the post-process: white balance gains, and what bubbles reflect below
+    /// and above (SceneLook).
+    private var look: [SIMD4<Float>] = GlassBubbleFrame.lookData(SceneLook())
+
+    /// `fringe`: the distortion's colour fringe (off while the phone is hot).
+    func update(look: SceneLook, fringe: Bool = true) {
+        var data = Self.lookData(look)
+        data[4].z = fringe ? 1 : 0
+        lock.lock()
+        defer { lock.unlock() }
+        self.look = data
+    }
+
+    func lookSnapshot() -> [SIMD4<Float>] {
+        lock.lock()
+        defer { lock.unlock() }
+        return look
+    }
+
+    private static func lookData(_ look: SceneLook) -> [SIMD4<Float>] {
+        let environment = look.bubbleEnvironment
+        let start = look.vignetteSize
+        return [
+            SIMD4(look.whiteBalanceGains, 1), SIMD4(environment.low, 1), SIMD4(environment.high, 1),
+            SIMD4(min(max(look.vignette, 0), 1), start, start + max(look.vignetteSoftness, 0.05), 0),
+            SIMD4(min(max(look.distortion, 0), 1), 0, 0, 0),   // .y: the time, set per frame
+        ]
     }
 
 
@@ -101,6 +131,11 @@ struct GlassBubbleEffect: PostProcessEffect {
         }
         var info = tileInfo
         encoder.setBytes(&info, length: MemoryLayout<SIMD2<UInt32>>.size, index: 7)
+        var look = frame.lookSnapshot()
+        look[4].y = Float(CACurrentMediaTime().truncatingRemainder(dividingBy: 3600))
+        look.withUnsafeBytes { bytes in
+            encoder.setBytes(bytes.baseAddress!, length: bytes.count, index: 8)
+        }
         let width = pipeline.threadExecutionWidth
         let height = max(1, pipeline.maxTotalThreadsPerThreadgroup / width)
         encoder.dispatchThreads(

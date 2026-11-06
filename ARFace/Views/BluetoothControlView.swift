@@ -20,21 +20,31 @@ struct BluetoothControlView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Section("Pairing") {
+                Section("Connection") {
                     Text(bluetooth.status)
                         .accessibilityIdentifier("bluetoothStatus")
-                    if bluetooth.isConnected || bluetooth.isPairing {
-                        Button(bluetooth.isConnected ? "Disconnect" : "Cancel pairing", role: .destructive) {
-                            bluetooth.stop()
+                    if bluetooth.isControlMode {
+                        if bluetooth.rememberedMainApp != nil {
+                            Button("Forget main app", role: .destructive) { bluetooth.forgetMainApp() }
+                            Text("It reconnects to the main app by itself, whenever both apps are open. Forget it to pair with another.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            if !bluetooth.isPairing, !bluetooth.isConnecting, !bluetooth.isConnected {
+                                Button("Find main app") { bluetooth.start() }
+                            }
+                            Text("Open the main app, then select it here. The first time, accept the iOS Bluetooth pairing prompt on both phones (before the helmet goes on). After that they find each other by themselves.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
                     } else {
-                        Button(bluetooth.isControlMode ? "Find main app" : "Allow pairing") {
-                            bluetooth.startPairing()
+                        if !bluetooth.isPairing, !bluetooth.isConnected {
+                            Button("Start") { bluetooth.start() }
                         }
+                        Text("The control app connects by itself whenever this app is open; nothing to press here. The first time, accept the iOS Bluetooth pairing prompt.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
-                    Text("Keep both apps open. Enable pairing on the main app, then find and select it on the control app. Accept the iOS Bluetooth pairing prompt if shown.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
                     if bluetooth.isConnecting {
                         ProgressView("Connecting…")
                     }
