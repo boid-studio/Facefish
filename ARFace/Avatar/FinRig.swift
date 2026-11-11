@@ -55,6 +55,8 @@ final class FinRig {
 
     private struct Pose {
         var tail = [Float](repeating: 0, count: 3)
+        /// Each tail joint bent toward the fish's back (radians, negative): drooping, playing dead.
+        var tailDroop = [Float](repeating: 0, count: 3)
         var pectoralFlap = Array(repeating: [Float](repeating: 0, count: 2), count: 2)
         var pectoralSweep = Array(repeating: [Float](repeating: 0, count: 2), count: 2)
         /// Dorsal (top) fin, root to tip: sideways bend (about each joint's local Z, + toward the
@@ -110,6 +112,9 @@ final class FinRig {
     /// Out from the head's middle through the left eye, in the skeleton's space: the right fin's is
     /// mirrored like its moves.
     private static let coverOutward = simd_normalize(SIMD3<Float>(0.604, 0.290, 0.742))
+    /// 0...1: limp (playing dead, upside down): the fins stop working and hang toward her back
+    /// (down, upside down), with only a slow drift; the tail droops and the ripple fades.
+    var limp: Float = 0
     /// How hard the side fins paddle while swimming under their own power (1 = as on a lap).
     var paddleBoost: Float = 1
     /// -1...1: both side fins flap together (a laugh's "ha"s).
@@ -236,6 +241,8 @@ final class FinRig {
             pose.tail[index] = tailSprings[index].angle
                 + 0.1 * finSway * energy * sin(4.2 * time - 0.9 * Float(index))
                 + 0.57 * propulsion * sin(strokePhase - 1.1 * Float(index) - 2.2)   // the swim stroke
+            pose.tail[index] += (0.07 * sin(0.5 * time - 0.6 * Float(index)) - pose.tail[index]) * limp
+            pose.tailDroop[index] = -0.2 * limp
         }
 
         let flapTarget = min(max(nodRate * 0.3 * finReaction, -0.6), 0.6)
@@ -277,6 +284,12 @@ final class FinRig {
                     - side * 0.5 * inside        // flared to brake on the inside of a turn
                     - side * 0.6 * spread        // opened wide
                 pose.pectoralSweep[sideIndex][index] = free * side * min(side * sweep, maxTuck)
+                // Limp: hanging down (toward her back, upside down), stirring a little in the water.
+                let drift = 0.7 * time + phase * 3 - 0.6 * Float(index)
+                let hang = 0.8 + 0.09 * sin(drift) + 0.04 * sin(1.9 * drift + 1)
+                pose.pectoralFlap[sideIndex][index] += (hang - pose.pectoralFlap[sideIndex][index]) * limp
+                let sway = side * (0.12 + 0.07 * sin(0.5 * time + phase * 4 - 0.5 * Float(index)))
+                pose.pectoralSweep[sideIndex][index] += (sway - pose.pectoralSweep[sideIndex][index]) * limp
             }
         }
 
@@ -300,6 +313,10 @@ final class FinRig {
                 + 0.06 * finSway * energy * sin(3.2 * time - 0.8 * Float(index) + 0.5)
             pose.dorsalLean[index] = dorsalLeanSprings[index].angle - 0.25 * propulsion   // folded back
                 + 0.2 * spread                                                                // standing up
+            // Limp, floating: folded back and swaying slowly, the bend travelling up to the tip.
+            let float = 0.35 * time - 0.7 * Float(index)
+            pose.dorsalSide[index] += (0.16 * sin(float + 1) + 0.05 * sin(2.3 * float) - pose.dorsalSide[index]) * limp
+            pose.dorsalLean[index] += (-0.28 + 0.12 * sin(0.45 * time - 0.6 * Float(index)) - pose.dorsalLean[index]) * limp
         }
 
         apply(pose)
@@ -356,6 +373,7 @@ final class FinRig {
                 switch joint.motion {
                 case let .tail(index):
                     transform.rotation = transform.rotation * simd_quatf(angle: pose.tail[index], axis: [1, 0, 0])
+                        * simd_quatf(angle: pose.tailDroop[index], axis: [0, 0, 1])
                 case let .pectoralFlap(side, index, root):
                     transform.rotation = transform.rotation
                         * simd_quatf(angle: pose.pectoralFlap[side][index], axis: [1, 0, 0])
@@ -396,8 +414,10 @@ final class FinRig {
     /// The ripple runs on the shader's own clock (finWave in Underwater.metal), so the fins'
     /// materials only change when its strength or speed does, not every frame.
     private func updateWaves(mouthOpen: Float, deltaTime: Float) {
-        guard finWave != appliedWave.strength || finWaveSpeed != appliedWave.speed else { return }
-        updateWaveMaterials(amplitudeScale: finWave)
+        // Limp fins hardly ripple (in steps, so the materials change only now and then).
+        let strength = (finWave * (1 - 0.8 * limp) * 20).rounded() / 20
+        guard strength != appliedWave.strength || finWaveSpeed != appliedWave.speed else { return }
+        updateWaveMaterials(amplitudeScale: strength)
     }
 
     private var appliedWave: (strength: Float, speed: Float) = (-1, -1)
@@ -452,35 +472,4 @@ nonisolated struct FinPose: Equatable {
         stretch: [0.85, 1.15, 0.3], middleBend: [0.4659, 0.4136, -0.4267],
         tipBend: [-0.7615, 0.1492, -0.2174], swing: [0.0058, -0.1575, -0.3003],
         arc: [0.2741, -0.1206, 0.0722])
-
-    /// My lips are sealed: folded, its tip drawn along the closed lips from the far mouth corner
-    /// (start) across (middle) to the near one (end), like a zip.
-    static let zipStart = FinPose(
-        rootTurn: [1.4525, 2.3208, 1.8089], rootMove: [-0.2215, 0.0025, 0.5932],
-        stretch: [0.85, 1.15, 0.3], middleBend: [-0.4995, 0.2422, -0.1061],
-        tipBend: [0.2104, -0.0825, 0.1279], swing: [-0.9239, -0.0396, 1.0754],
-        arc: [0.2332, -0.4597, 0.0275])
-    static let zipMiddle = FinPose(
-        rootTurn: [1.7966, 2.3745, 1.8167], rootMove: [0.0402, 0.0127, 0.5119],
-        stretch: [0.85, 1.15, 0.3], middleBend: [-0.5177, 0.4431, -0.2032],
-        tipBend: [0.1905, -0.0236, 0.0765], swing: [-0.9239, -0.0396, 1.0754],
-        arc: [0.2332, -0.4597, 0.0275])
-    static let zipEnd = FinPose(
-        rootTurn: [1.7656, 2.5889, 1.8442], rootMove: [0.1636, 0.0742, 0.3617],
-        stretch: [0.85, 1.15, 0.3], middleBend: [-0.5299, 0.5134, -0.2032],
-        tipBend: [0.4617, 0.1487, 0.031], swing: [0, 0, 0])
-
-    /// Along the zip, 0 (start) ... 1 (end).
-    static func zip(_ u: Float) -> FinPose {
-        let u = min(max(u, 0), 1)
-        return u < 0.5 ? mix(zipStart, zipMiddle, u * 2) : mix(zipMiddle, zipEnd, u * 2 - 1)
-    }
-
-    static func mix(_ a: FinPose, _ b: FinPose, _ t: Float) -> FinPose {
-        func m(_ x: SIMD3<Float>, _ y: SIMD3<Float>) -> SIMD3<Float> { x + (y - x) * t }
-        return FinPose(rootTurn: m(a.rootTurn, b.rootTurn), rootMove: m(a.rootMove, b.rootMove),
-                       stretch: m(a.stretch, b.stretch), middleBend: m(a.middleBend, b.middleBend),
-                       tipBend: m(a.tipBend, b.tipBend), swing: m(a.swing, b.swing), arc: m(a.arc, b.arc),
-                       clearsEye: t < 0.5 ? a.clearsEye : b.clearsEye)
-    }
 }

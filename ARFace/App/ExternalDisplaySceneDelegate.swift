@@ -36,6 +36,10 @@ final class ExternalDisplaySceneDelegate: NSObject, UIWindowSceneDelegate {
             screen.currentMode = best
         }
     }
+
+    /// The largest square the fish is drawn at (pixels); a bigger screen gets it scaled up. A 4K
+    /// monitor's 2160x2160 is nearly four times the pixels and ran at ~18 fps.
+    static let maxRenderSide: CGFloat = 1080
 }
 
 /// From iOS 27 the system only connects the external display scene after the app registers a
@@ -66,10 +70,14 @@ private struct ExternalCanvasView: View {
     @State private var avatarSession = AvatarSession.shared
     @State private var bluetooth = BluetoothControl.shared
     @State private var isAvatarReady = false
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         GeometryReader { geometry in
             let side = max(min(geometry.size.width, geometry.size.height), 1)
+            // Drawn at most 1080 pixels square, then scaled up to fill the screen.
+            let pixelScale = max(displayScale, 1)
+            let renderSide = min(side, ExternalDisplaySceneDelegate.maxRenderSide / pixelScale)
 
             Group {
                 if bluetooth.isControlMode {
@@ -82,8 +90,10 @@ private struct ExternalCanvasView: View {
                         isReady: $isAvatarReady,
                         showsLoadError: false
                     )
-                    .frame(width: side, height: side)
+                    .frame(width: renderSide, height: renderSide)
                     .clipped()
+                    .scaleEffect(side / renderSide)
+                    .frame(width: side, height: side)
                 }
             }
             .frame(width: geometry.size.width, height: geometry.size.height)

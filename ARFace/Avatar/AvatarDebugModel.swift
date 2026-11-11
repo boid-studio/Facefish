@@ -61,19 +61,19 @@ final class AvatarDebugModel {
     var laughReadout = LaughReadout()
 
     // The scene (the control app's Scene tab): one setup per show, kept by saveScene().
-    var cameraZ: Float = 0.75
+    var cameraZ: Float = 1.05
     /// The camera's vertical field of view (degrees).
-    var fieldOfView: Float = 35
+    var fieldOfView: Float = 27.6
     /// The water's colour (linear RGB, SceneLook).
-    var waterColor = SceneLook.defaultWater
+    var waterColor = WaterPreset.deepSea.water
     /// -1 cool ... +1 warm.
     var whiteBalance: Float = 0
     /// 0 off ... 1 black at the edge; where it starts (SceneLook).
-    var vignette: Float = 0
-    var vignetteSize: Float = 0.6
-    var vignetteSoftness: Float = 1.2
+    var vignette: Float = 0.54
+    var vignetteSize: Float = 0.79
+    var vignetteSoftness: Float = 1.0
     /// How light the water (background) is, 0 black ... 1 as designed ... 1.3 (SceneLook).
-    var waterBrightness: Float = 1
+    var waterBrightness: Float = 0.53
     /// How much she bobs as the phone moves: 0 off, 1 slight, 2 more (AvatarController).
     var motionReaction: Float = 1
     /// How much debris floats in the water, and how lively the water moves it (0...2, 1 = default).
@@ -81,6 +81,8 @@ final class AvatarDebugModel {
     var waterMotion: Float = 1
     /// The image wavering as if seen through moving water, 0...1 (SceneLook).
     var distortion: Float = 0
+    /// How much the water tints and hazes the fish, 0 her true colours ... 1 (SceneLook).
+    var underwaterTint: Float = 0
     /// 0 = natural, 1 = big stage acting (AvatarController; set from the control app too).
     var acting: Float = 0
     /// Spotting laughter and playing it bigger (LaughDetector). Off: not reliable enough yet.
@@ -123,7 +125,8 @@ final class AvatarDebugModel {
             swimMotionEnabled: swimMotionEnabled,
             headFollowEnabled: headFollowEnabled,
             look: SceneLook(water: waterColor, whiteBalance: whiteBalance, vignette: vignette,
-                            vignetteSize: vignetteSize, vignetteSoftness: vignetteSoftness, brightness: waterBrightness, distortion: distortion),
+                            vignetteSize: vignetteSize, vignetteSoftness: vignetteSoftness, brightness: waterBrightness, distortion: distortion,
+                            underwaterTint: underwaterTint),
             debrisAmount: debrisAmount,
             waterMotion: waterMotion
         )
@@ -170,6 +173,7 @@ final class AvatarDebugModel {
             scene.debrisAmount = debrisAmount
             scene.waterMotion = waterMotion
             scene.distortion = distortion
+            scene.underwaterTint = underwaterTint
             scene.off = SceneSwitch.allCases.filter { !self[scene: $0] }.map(\.rawValue)
             return scene
         }
@@ -187,6 +191,7 @@ final class AvatarDebugModel {
             debrisAmount = min(max(newValue.debrisAmount, 0), 2)
             waterMotion = min(max(newValue.waterMotion, 0), 2)
             distortion = min(max(newValue.distortion, 0), 1)
+            underwaterTint = min(max(newValue.underwaterTint, 0), 1)
             for part in SceneSwitch.allCases { self[scene: part] = !newValue.off.contains(part.rawValue) }
         }
     }

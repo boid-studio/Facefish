@@ -13,7 +13,10 @@ enum ControlCommand: String, Codable, CaseIterable, Identifiable {
     case blowBubbles
     case stare
     case shush
-    case sealed
+    case fart
+    case laugh
+    case playDead
+    case wakeUp
     case hide
     case show
 
@@ -31,7 +34,10 @@ enum ControlCommand: String, Codable, CaseIterable, Identifiable {
         case .blowBubbles: "Blow bubbles"
         case .stare: "Stare"
         case .shush: "Shush"
-        case .sealed: "My lips are sealed"
+        case .fart: "Fart"
+        case .laugh: "Laugh"
+        case .playDead: "Play dead"
+        case .wakeUp: "Wake up"
         case .hide: "Hide"
         case .show: "Show"
         }
@@ -75,6 +81,8 @@ enum RemoteSetting: Codable, Equatable {
     case waterMotion(Float)
     /// The image wavering as if seen through moving water, 0...1.
     case distortion(Float)
+    /// How much the water tints and hazes the fish, 0...1.
+    case underwaterTint(Float)
     case scene(SceneSwitch, Bool)
     /// Keep the scene as it is now on the main app (loaded at its next launch).
     case saveScene
@@ -105,6 +113,7 @@ enum RemoteSetting: Codable, Equatable {
         case .debrisAmount: "debrisAmount"
         case .waterMotion: "waterMotion"
         case .distortion: "distortion"
+        case .underwaterTint: "underwaterTint"
         case .scene(let part, _): "scene.\(part.rawValue)"
         case .saveScene: "saveScene"
         }
@@ -115,7 +124,7 @@ enum RemoteSetting: Codable, Equatable {
         switch self {
         case .waterColor, .whiteBalance, .fieldOfView, .cameraZ, .vignette, .vignetteSize,
              .vignetteSoftness, .waterBrightness, .causticIntensity, .motionReaction, .scene,
-             .debrisAmount, .waterMotion, .distortion:
+             .debrisAmount, .waterMotion, .distortion, .underwaterTint:
             true
         default:
             false
@@ -147,6 +156,7 @@ enum RemoteSetting: Codable, Equatable {
         case .debrisAmount(let v): "Debris \(String(format: "%.2f", v))"
         case .waterMotion(let v): "Water motion \(String(format: "%.2f", v))"
         case .distortion(let v): "Distortion \(String(format: "%.2f", v))"
+        case .underwaterTint(let v): "Underwater tint \(String(format: "%.2f", v))"
         case .scene(let part, let on): "\(part.title) \(on ? "on" : "off")"
         case .saveScene: "Save scene settings"
         }

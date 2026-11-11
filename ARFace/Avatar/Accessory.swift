@@ -8,14 +8,18 @@ import RealityKit
 nonisolated enum Accessory: String, Codable, CaseIterable, Identifiable {
     case mask
     case brows
+    case tophat
+    case snorkel
     case helmet
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .mask: "Mask"
+        case .mask: "Gold mask"
         case .brows: "Brows"
+        case .tophat: "Top hat"
+        case .snorkel: "Snorkel mask"
         case .helmet: "Diving helmet"
         }
     }
@@ -24,6 +28,8 @@ nonisolated enum Accessory: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .mask: "theatermasks"
         case .brows: "eyebrow"
+        case .tophat: "hat.widebrim.fill"
+        case .snorkel: "figure.open.water.swim"
         case .helmet: "circle.circle"
         }
     }
@@ -34,6 +40,8 @@ nonisolated enum Accessory: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .mask: SIMD2(0.03, 0.06)   // the band on the left, the mask over the right eye
         case .brows: .zero              // the blush pose was solved with them on
+        case .tophat: .zero             // on top of her head
+        case .snorkel: SIMD2(0.12, 0.12)   // the glass stands well out from both eyes
         case .helmet: .zero             // around her, not on her
         }
     }
@@ -43,6 +51,7 @@ nonisolated enum Accessory: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .mask: false
         case .brows: true
+        case .tophat, .snorkel: false
         case .helmet: true
         }
     }

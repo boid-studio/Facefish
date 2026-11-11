@@ -19,6 +19,10 @@ final class EyeRig {
     /// Both eyes turned to look a set way, over the tracked look, by `weight` 0...1 (a stare into
     /// the lens): yaw + toward the fish's left, pitch + down, in radians.
     var lookOverride: (yaw: Float, pitch: Float, weight: Float) = (0, 0, 0)
+    /// How far past `range` the eyes may turn (1 = no further): rolled right up, playing dead.
+    var reach: Float = 1
+    /// 0...1: cross-eyed, both looking in toward the nose (playing dead); up and down stay as they are.
+    var cross: Float = 0
 
     private struct Eye {
         let entity: Entity
@@ -89,6 +93,12 @@ final class EyeRig {
             pitchL += (lookOverride.pitch - pitchL) * w
             pitchR += (lookOverride.pitch - pitchR) * w
         }
+        let c = min(max(cross, 0), 1)
+        if c > 0 {
+            // In toward the nose: the left eye to the fish's right, the right eye to her left.
+            yawL += (-0.9 * range - yawL) * c
+            yawR += (0.9 * range - yawR) * c
+        }
         // Quick, like a real eye, but enough to hide tracking jitter.
         let alpha = Float(1 - exp(-deltaTime / (weight == nil ? 0.15 : 0.02)))
         step(&left, yaw: yawL, pitch: pitchL, alpha: alpha)
@@ -98,7 +108,7 @@ final class EyeRig {
     private func step(_ eye: inout Eye?, yaw: Float, pitch: Float, alpha: Float) {
         guard var current = eye else { return }
         current.yaw += alpha * (min(max(yaw, -range), range) - current.yaw)
-        current.pitch += alpha * (min(max(pitch, -range), range) - current.pitch)
+        current.pitch += alpha * (min(max(pitch, -range * reach), range * reach) - current.pitch)
         // The rest turn fades as the eye looks to the side (smoothly through looking ahead).
         let sideways = min(1, (sqrt(current.yaw * current.yaw + 0.0004) - 0.02) / range)
         let relax = -current.restYaw * sideways

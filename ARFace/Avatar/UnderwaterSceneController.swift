@@ -343,6 +343,11 @@ final class UnderwaterSceneController {
     ) {
         let fin = FinWaveConfiguration.matching(entity.name) ?? inheritedFin
         let isEyelid = inheritedEyelid || entity.name.localizedCaseInsensitiveContains("eyelid")
+        // The eyeballs: clean, glossy, without the caustics' glints or the water's tint.
+        let isEyeball = !isEyelid && sequence(first: entity, next: \.parent).contains { ancestor in
+            let name = ancestor.name.lowercased().filter(\.isLetter)
+            return name == "eyel" || name == "eyer"
+        }
         let isAccessory = inheritedAccessory || Accessory.part(named: entity.name) != nil
         if let existingModel = entity.components[ModelComponent.self] {
             let partCount = existingModel.mesh.contents.models.map(\.parts.count).reduce(0, +)
@@ -360,13 +365,15 @@ final class UnderwaterSceneController {
                     disabledMaterials: faceMaterials.disabled,
                     kind: .face
                 ))
-            } else if partCount == 1, !hasBlendShapes {
+            } else if partCount == 1, !hasBlendShapes || isEyelid {
+                // (The lids have a blend shape, their lashes closing; that's fine for their material.)
                 var model = existingModel
                 let originalMaterials = model.materials
-                let enabledMaterials = isEyelid ? originalMaterials : originalMaterials.map {
-                    customMaterial(from: $0, causticsEnabled: true, fog: 0, fin: fin) ?? $0
+                let lidMaterials = isEyelid ? originalMaterials.map { lidMaterial(from: $0) ?? $0 } : []
+                let enabledMaterials = isEyelid ? lidMaterials : originalMaterials.map {
+                    (isEyeball ? eyeMaterial(from: $0) : customMaterial(from: $0, causticsEnabled: true, fog: 0, fin: fin)) ?? $0
                 }
-                let disabledMaterials = isEyelid ? originalMaterials : originalMaterials.map {
+                let disabledMaterials = isEyelid ? lidMaterials : isEyeball ? enabledMaterials : originalMaterials.map {
                     customMaterial(from: $0, causticsEnabled: false, fog: 0, fin: fin) ?? $0
                 }
                 model.materials = enabledMaterials
@@ -375,7 +382,7 @@ final class UnderwaterSceneController {
                     entity: entity,
                     enabledMaterials: enabledMaterials,
                     disabledMaterials: disabledMaterials,
-                    kind: fin == nil && !isEyelid ? .surface : nil
+                    kind: fin == nil && !isEyelid && !isEyeball ? .surface : nil
                 ))
             } else if fin != nil {
                 logger.error("Fin mesh \(entity.name, privacy: .public) has multiple parts; fin ripple is unavailable.")
@@ -410,6 +417,28 @@ final class UnderwaterSceneController {
             return nil
         }
         return (enabled, disabled)
+    }
+
+    /// The eyelids' material (lidSurface): their own look, but where the opacity map says
+    /// see-through they're gone, shine and all (a transparent material otherwise still reflects
+    /// the studio, a grey ghost of the lid around the lashes).
+    private func lidMaterial(from base: any Material) -> CustomMaterial? {
+        guard let library else { return nil }
+        guard var material = try? CustomMaterial(from: base, surfaceShader: .init(named: "lidSurface", in: library)) else {
+            return nil
+        }
+        material.custom.value = .zero
+        return material
+    }
+
+    /// The eyeballs' material (eyeSurface): clean and glossy.
+    private func eyeMaterial(from base: any Material) -> CustomMaterial? {
+        guard let library else { return nil }
+        guard var material = try? CustomMaterial(from: base, surfaceShader: .init(named: "eyeSurface", in: library)) else {
+            return nil
+        }
+        material.custom.value = .zero
+        return material
     }
 
     private func customMaterial(
@@ -743,7 +772,8 @@ final class UnderwaterSceneController {
 
     /// The water's colour: the palette texture every scene material reads, and the lights and specks.
     private func setLook(_ newLook: SceneLook) {
-        guard newLook.water != look.water || newLook.brightness != look.brightness else { return }
+        guard newLook.water != look.water || newLook.brightness != look.brightness
+                || newLook.underwaterTint != look.underwaterTint else { return }
         look = newLook
         if let paletteTexture, let image = Self.paletteImage(look) {
             do {
@@ -775,9 +805,10 @@ final class UnderwaterSceneController {
 
     private static let paletteOptions = TextureResource.CreateOptions(semantic: .raw, mipmapsMode: .none)
 
-    /// 5 x 1 texels: deep, mid, shallow water, rays, and magenta marking it (WaterPalette).
+    /// 6 x 1 texels: deep, mid, shallow water, rays, magenta marking it, and the tint (WaterPalette).
     private static func paletteImage(_ look: SceneLook) -> CGImage? {
-        let colors = [look.deepWater, look.midWater, look.shallowWater, look.rays, SIMD3<Float>(1, 0, 1)]
+        let colors = [look.deepWater, look.midWater, look.shallowWater, look.rays, SIMD3<Float>(1, 0, 1),
+                      SIMD3<Float>(look.underwaterTint, 0, 0)]
         var bytes: [UInt8] = []
         for color in colors {
             for value in [color.x, color.y, color.z] {

@@ -5,10 +5,13 @@ using namespace metal;
 constant int kWaveCount = 6;   // fewer waves = cheaper caustics (the GPU's biggest cost on the fish); 6 still looks organic
 
 // The water's colours (SceneLook, the control app's Scene tab): the depth gradient and the light
-// rays. Each material carries them in its custom texture, 5 x 1 texels: deep, mid, shallow, rays,
-// and magenta to mark it (without it, the sea blue the scene was designed in).
+// rays. Each material carries them in its custom texture, 6 x 1 texels: deep, mid, shallow, rays,
+// magenta to mark it (without it, the sea blue the scene was designed in), and the underwater
+// tint's strength (red; 1 if missing).
 struct WaterPalette {
     half3 deep, mid, shallow, rays;
+    /// How much the water tints and hazes the fish, 0 (her true colours) ... 1.
+    half tint;
 };
 
 static WaterPalette defaultPalette() {
@@ -17,6 +20,7 @@ static WaterPalette defaultPalette() {
     p.mid = half3(0.02, 0.26, 0.44);
     p.shallow = half3(0.18, 0.62, 0.78);
     p.rays = half3(0.35, 0.7, 0.8);
+    p.tint = 1.0;
     return p;
 }
 
@@ -31,6 +35,7 @@ static WaterPalette waterPalette(Texture palette) {
     p.mid = palette.sample(s, float2(1.5, 0.5)).rgb;
     p.shallow = palette.sample(s, float2(2.5, 0.5)).rgb;
     p.rays = palette.sample(s, float2(3.5, 0.5)).rgb;
+    p.tint = palette.get_width() >= 6 ? palette.sample(s, float2(5.5, 0.5)).r : half(1.0);
     return p;
 }
 
@@ -43,12 +48,16 @@ static half3 waterColor(float y, WaterPalette palette) {
 
 static half3 underwaterBackdrop(float3 position, float time, WaterPalette palette) {
     half3 color = waterColor(position.y, palette);
-    float u = position.x;
+    // The rays sway together with the surface swell (more toward the top, where the light comes
+    // in), drift past each other, and each brightens and dims on its own beat.
+    float depth = saturate((position.y + 0.5) / 1.2);
+    float u = position.x
+        + (0.035 * sin(time * 0.55 + position.y * 1.7) + 0.02 * sin(time * 1.05 + 2.0)) * (0.4 + 0.6 * depth);
     float rays = 0;
-    rays += pow(saturate(sin(u * 23.0 + time * 0.23) * 0.5 + 0.5), 6.0);
-    rays += pow(saturate(sin(u * 13.7 - time * 0.17 + 1.3) * 0.5 + 0.5), 8.0) * 0.8;
-    rays += pow(saturate(sin(u * 37.3 + time * 0.31 + 4.1) * 0.5 + 0.5), 10.0) * 0.5;
-    rays += pow(saturate(sin(u * 51.9 - time * 0.27 + 2.6) * 0.5 + 0.5), 12.0) * 0.4;
+    rays += pow(saturate(sin(u * 23.0 + time * 0.60) * 0.5 + 0.5), 6.0) * (0.75 + 0.25 * sin(time * 0.83 + 0.4));
+    rays += pow(saturate(sin(u * 13.7 - time * 0.45 + 1.3) * 0.5 + 0.5), 8.0) * 0.8 * (0.7 + 0.3 * sin(time * 0.61 + 2.1));
+    rays += pow(saturate(sin(u * 37.3 + time * 0.80 + 4.1) * 0.5 + 0.5), 10.0) * 0.5 * (0.6 + 0.4 * sin(time * 1.13 + 4.7));
+    rays += pow(saturate(sin(u * 51.9 - time * 0.70 + 2.6) * 0.5 + 0.5), 12.0) * 0.4 * (0.6 + 0.4 * sin(time * 0.97 + 1.2));
     float rayFade = pow(saturate((position.y + 0.5) / 1.2), 2.0);
     return color + palette.rays * half(rays * rayFade * 0.35);
 }
@@ -77,13 +86,13 @@ static half3 caustics(float2 p, float time, float focus) {
 // `tintScale` (the material's tint brightness) scales the scatter with the material.
 static half3 underwaterTint(half3 color, float3 position, half tintScale, WaterPalette palette) {
     // Reds absorbed, and a slow shimmer of brightness as surface light passes over.
-    half3 tinted = color * half3(0.86, 0.96, 1.0);
-    return mix(tinted, waterColor(position.y + 0.3, palette), half(0.06));
+    half3 tinted = color * mix(half3(1.0), half3(0.86, 0.96, 1.0), palette.tint);
+    return mix(tinted, waterColor(position.y + 0.3, palette), half(0.06) * palette.tint);
 }
 
 static half3 waterScatter(float3 position, half tintScale, float time, WaterPalette palette) {
     float flicker = 0.85 + 0.15 * sin(time * 0.9 + position.x * 6.0) * sin(time * 0.53 + position.y * 4.0 + 1.3);
-    return waterColor(position.y + 0.3, palette) * half(0.07 * flicker) * tintScale;
+    return waterColor(position.y + 0.3, palette) * half(0.07 * flicker) * tintScale * palette.tint;
 }
 
 // PBR passthrough that adds caustic light on upward-facing surfaces.
@@ -134,6 +143,51 @@ void causticSurface(realitykit::surface_parameters params) {
 [[visible]]
 void causticFinSurface(realitykit::surface_parameters params) {
     causticSurfaceImpl(params, float4(32.0, 6.0, 1.4, 1.0));
+}
+
+// The eyelids and lashes: their own colours, cut out by the opacity map (read as data, not
+// colour). Fully see-through parts are dropped, and the shine fades with the opacity, so a
+// transparent lid doesn't still reflect the studio around the lashes.
+[[visible]]
+void lidSurface(realitykit::surface_parameters params) {
+    constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
+    auto tex = params.textures();
+    auto material = params.material_constants();
+
+    float2 uv = params.geometry().uv0();
+    uv.y = 1.0 - uv.y;
+
+    half4 base = tex.base_color().sample(s, uv);
+    half opacity = tex.opacity().sample(s, uv).r * half(material.opacity_scale()) * base.a;
+    if (opacity < 0.02h) {
+        discard_fragment();
+    }
+
+    auto surface = params.surface();
+    surface.set_base_color(base.rgb * half3(material.base_color_tint()));
+    surface.set_roughness(tex.roughness().sample(s, uv).r * half(material.roughness_scale()));
+    surface.set_metallic(tex.metallic().sample(s, uv).r * half(material.metallic_scale()));
+    surface.set_specular(tex.specular().sample(s, uv).r * half(material.specular_scale()) * opacity);
+    surface.set_opacity(opacity);
+}
+
+// The eyeballs: their own colours, glossy, without the caustics or the water's tint.
+[[visible]]
+void eyeSurface(realitykit::surface_parameters params) {
+    constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
+    auto tex = params.textures();
+    auto material = params.material_constants();
+
+    float2 uv = params.geometry().uv0();
+    uv.y = 1.0 - uv.y;
+
+    auto surface = params.surface();
+    surface.set_base_color(tex.base_color().sample(s, uv).rgb * half3(material.base_color_tint()));
+    surface.set_roughness(tex.roughness().sample(s, uv).r * half(material.roughness_scale()));
+    surface.set_metallic(tex.metallic().sample(s, uv).r * half(material.metallic_scale()));
+    surface.set_specular(tex.specular().sample(s, uv).r * half(material.specular_scale()));
+    surface.set_clearcoat(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()));
+    surface.set_clearcoat_roughness(tex.clearcoat_roughness().sample(s, uv).r * half(material.clearcoat_roughness_scale()));
 }
 
 // Lightweight PBR passthrough used while caustics are disabled. Keeping a CustomMaterial on
@@ -376,4 +430,7 @@ void accessorySurface(realitykit::surface_parameters params) {
     surface.set_specular(tex.specular().sample(s, uv).r * half(material.specular_scale()));
     surface.set_clearcoat(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()));
     surface.set_clearcoat_roughness(tex.clearcoat_roughness().sample(s, uv).r * half(material.clearcoat_roughness_scale()));
+    // See-through parts (a snorkel mask's glass).
+    surface.set_opacity(tex.opacity().sample(s, uv).r * half(material.opacity_scale())
+                        * tex.base_color().sample(s, uv).a);
 }

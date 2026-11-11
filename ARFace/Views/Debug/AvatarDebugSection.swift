@@ -122,6 +122,12 @@ struct RenderingDebugSection: View {
             Slider(value: $model.waterMotion, in: 0...2) { Text("Water motion") }
         }
         VStack(alignment: .leading) {
+            LabeledContent("Underwater tint") {
+                Text("\(model.underwaterTint, specifier: "%.2f")").monospacedDigit()
+            }
+            Slider(value: $model.underwaterTint, in: 0...1) { Text("Underwater tint") }
+        }
+        VStack(alignment: .leading) {
             LabeledContent("Distortion") {
                 Text("\(model.distortion, specifier: "%.2f")").monospacedDigit()
             }
