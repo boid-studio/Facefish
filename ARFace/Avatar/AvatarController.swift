@@ -48,13 +48,17 @@ final class AvatarController {
     private var laughReadoutTime: Float = 0
     /// This frame's laugh (0...1), for the face.
     private var laughing: Float = 0
+    /// Each "ha" (-1...1): the detector's, or the Laugh action's.
+    private var laughPulse: Float = 0
+    /// The Laugh action, seconds in (nil when not laughing on cue).
+    private var laughCue: Float?
     /// Singing a big note (loud voice, open mouth), 0...1, and the vibrato's clock.
     private var bigNoteLevel: Float = 0
     private var bigNote: Float = 0
     private var vibratoTime: Float = 0
     private var lastMouthOpen: Float = 0
     /// A move taking over the mouth (blowing bubbles), from the last frame's move.
-    private var moveFace: (takeover: Float, cheekPuff: Float, pucker: Float, bubbles: Float, seal: Float) = (0, 0, 0, 0, 0)
+    private var moveFace: (takeover: Float, cheekPuff: Float, pucker: Float, bubbles: Float) = (0, 0, 0, 0)
     /// 0 = natural, 1 = big stage acting (AvatarDebugModel.acting, also set from the control app).
     private var acting: Float { AvatarSession.shared.avatarDebug.acting }
     /// A lap around the bowl (SwimAround.swift) and the quick moves (SwimTrick.swift).
@@ -63,6 +67,13 @@ final class AvatarController {
     /// Backing out of frame and swimming back in (HideShow.swift), for the acting.
     private var hideShow = HideShow()
     private var stare = Stare()
+    /// Playing dead (a toggle): `playsDead` is asked for, `deadProgress` 0...1 rolls her over.
+    private var playsDead = false
+    private var deadProgress: Float = 0
+    private var deadTime: Float = 0
+    /// Where a fart comes out (her back end, under the tail's base, in the body's frame).
+    private var ventPosition = SIMD3<Float>(0, -0.02, -0.08)
+    private var ventBacklog: Float = 0
     private var lastStareYaw: Float = 0
     /// The right eyeball's centre (in the fish's frame) and radius, for the stare.
     private var rightEyeOffset = SIMD3<Float>(-0.03, 0.02, 0.06)
@@ -170,6 +181,20 @@ final class AvatarController {
         for (accessory, part) in accessoryParts where accessory.isSurroundings {
             part.setParent(sceneRoot, preservingWorldTransform: true)
         }
+        // A studio beauty light (StudioLight) for her and what she wears, in place of RealityKit's
+        // generic default: what her eyes and the gold reflect.
+        if let studio = StudioLight.environment() {
+            let light = Entity()
+            light.components.set(ImageBasedLightComponent(source: .single(studio), intensityExponent: StudioLight.intensityExponent))
+            sceneRoot.addChild(light)
+            let receiver = ImageBasedLightReceiverComponent(imageBasedLight: light)
+            func receive(_ entity: Entity) {
+                entity.components.set(receiver)
+                entity.children.forEach(receive)
+            }
+            receive(root)
+            for (accessory, part) in accessoryParts where accessory.isSurroundings { receive(part) }
+        }
         if let eye = EyeRig.find(in: model, named: "eyer") {
             let bounds = eye.visualBounds(relativeTo: root)
             rightEyeOffset = bounds.center
@@ -178,6 +203,9 @@ final class AvatarController {
         // The tail twice, so half the wake comes off it.
         wakeSpots = ["TailRig", "TailRig", "PecRig_L", "PecRig_R"].compactMap { name in
             model.findEntity(named: name).map { $0.visualBounds(relativeTo: body) }
+        }
+        if let tail = wakeSpots.first {
+            ventPosition = SIMD3(tail.center.x, tail.min.y + 0.3 * tail.extents.y, tail.max.z)
         }
 
         var unmatched: [String] = []
@@ -191,7 +219,7 @@ final class AvatarController {
             mouthEmitter = bubbles
             mouthBubbleSpheres = BubbleSphereSystem(
                 parent: mouthBubbles,
-                capacity: 160,
+                capacity: 260,   // room for a fart's burst too
                 radius: 0.01,
                 color: UIColor(red: 0.85, green: 0.97, blue: 1, alpha: 0.85),
                 lifeSpan: 2.8,
@@ -297,6 +325,15 @@ final class AvatarController {
             laugh = LaughDetector()
         }
         laughing = laugh.intensity * presence
+        laughPulse = laugh.pulse
+        // The Laugh action: about three seconds of "ha-ha-ha", building and fading.
+        if var t = laughCue {
+            t += frameDelta
+            laughCue = t < 3.2 ? t : nil
+            let swell = Self.smoothstep(0, 0.3, t) * (1 - Self.smoothstep(2.5, 3.2, t))
+            laughing = max(laughing, swell)
+            laughPulse = sin(2 * .pi * 4.3 * t) * (1 - 0.3 * t / 3.2)
+        }
 
         // Singing a big note: a loud voice through an open mouth. Played bigger with Acting.
         let note = isTracked ? Self.smoothstep(0.35, 0.7, audio.overall) * Self.smoothstep(0.15, 0.4, lastMouthOpen) : 0
@@ -315,7 +352,10 @@ final class AvatarController {
             eyeRig.update(weight: weight, deltaTime: deltaTime)
             lidRig.update(weight: weight, deltaTime: deltaTime)
         } else {
-            let weight: (ARFaceAnchor.BlendShapeLocation) -> Float = { idle.weight($0, eyeRange: eyeRange) }
+            // Without a face too: playing dead closes the eyes.
+            let weight: (ARFaceAnchor.BlendShapeLocation) -> Float = { [self] location in
+                lifeless(location, idle.weight(location, eyeRange: eyeRange))
+            }
             eyeRig.update(weight: weight, deltaTime: deltaTime)
             lidRig.update(weight: weight, deltaTime: deltaTime)
         }
@@ -346,6 +386,7 @@ final class AvatarController {
         }
         var bodyTurnRate: Float = 0, bodyNodRate: Float = 0, steer: Float = 0, effort: Float = 0, bend: Float = 0
         var cover = SIMD2<Float>(repeating: 0), blush: Float = 0, finPose = FinPose.cover
+        var trickGaze = SIMD3<Float>(repeating: 0)
         let hiding = hideShow.update(deltaTime: moveDelta)
         if AvatarSession.shared.fishHidden != hideShow.isHidden { AvatarSession.shared.fishHidden = hideShow.isHidden }
         let lap = swimAround.update(deltaTime: moveDelta)
@@ -374,13 +415,15 @@ final class AvatarController {
                 bend = pose.bend
                 cover = pose.cover
                 blush = pose.blush
-                moveFace = (pose.mouthTakeover, pose.cheekPuff, pose.pucker, pose.bubbles, pose.seal)
+                moveFace = (pose.mouthTakeover, pose.cheekPuff, pose.pucker, pose.bubbles)
                 finPose = pose.finPose
+                trickGaze = pose.gaze
+                if options.mouthBubblesEnabled { updateVentBubbles(rate: pose.ventBubbles, deltaTime: moveDelta) }
             } else {
                 activeTrick = nil
             }
         }
-        if activeTrick == nil { moveFace = (0, 0, 0, 0, 0) }
+        if activeTrick == nil { moveFace = (0, 0, 0, 0) }
         if let pose = hiding?.pose {
             // Swimming out and back in: faced along the path like on a lap, the fins steering
             // ahead of the body, paddling hard, the whole body swimming.
@@ -403,9 +446,35 @@ final class AvatarController {
         } else {
             lastStareYaw = 0
         }
-        // Her eyes turn full right, into the lens.
-        eyeRig.lookOverride = (-eyeRig.range, 0, (staring?.gaze ?? 0) * (staring?.weight ?? 0))
-        finRig.paddleBoost = hiding?.pose != nil ? 1.8 : 1
+        // Playing dead: she rolls over belly up and floats, drifting slowly. Waking, she paddles
+        // hard with her fins and tail to roll back over, and a bit quicker.
+        deadProgress = min(max(deadProgress + (playsDead ? moveDelta / 1.4 : -moveDelta / 1.0), 0), 1)
+        let dead = Self.smootherstep(deadProgress)
+        let waking = !playsDead && deadProgress > 0 ? sin(.pi * deadProgress) : 0
+        effort = max(effort, waking)
+        bend = max(bend, 0.14 * waking)
+        if dead > 0 {
+            deadTime += moveDelta
+            let drift = simd_quatf(angle: 0.12 * sin(0.25 * deadTime), axis: [0, 1, 0])
+                * simd_quatf(angle: -0.1 + 0.04 * sin(0.33 * deadTime + 1), axis: [1, 0, 0])
+            root.orientation = simd_slerp(root.orientation, drift, dead)
+                * simd_quatf(angle: .pi * dead, axis: [0, 0, 1])
+        } else {
+            deadTime = 0
+        }
+        finRig.limp = playsDead ? dead : dead * dead   // waking: the fins come alive first
+        eyeRig.cross = 0.4 * dead
+        eyeRig.reach = 1 + 0.7 * dead
+        // Her eyes: rolled up playing dead, full right into the lens (a stare), or where a move
+        // wants them (a fart).
+        if dead > 0 {
+            eyeRig.lookOverride = (0, -1.7 * eyeRig.range, dead)   // rolled right up (- pitch is up)
+        } else if trickGaze.z > 0 {
+            eyeRig.lookOverride = (trickGaze.x, trickGaze.y, trickGaze.z)
+        } else {
+            eyeRig.lookOverride = (-eyeRig.range, 0, (staring?.gaze ?? 0) * (staring?.weight ?? 0))
+        }
+        finRig.paddleBoost = hiding?.pose != nil || waking > 0 ? 1.8 : 1
         let worn = AvatarSession.shared.wornAccessories
         for (accessory, part) in accessoryParts where part.isEnabled != worn.contains(accessory) {
             part.isEnabled = worn.contains(accessory)
@@ -418,7 +487,7 @@ final class AvatarController {
         finRig.steer = steer
         finRig.propulsion = max(effort, 0.45 * laughing)      // laughing: the tail wags, fins paddle
         let vibrato = sin(2 * .pi * 5.5 * vibratoTime)
-        finRig.clap = laughing * laugh.pulse                  // and the side fins clap on each "ha"
+        finRig.clap = laughing * laughPulse                   // and the side fins clap on each "ha"
             + 0.12 * bigNote * vibrato                        // a shimmer on a held note
         finRig.spread = bigNote                               // big notes: fins open wide
         finRig.finReaction = 1 + acting
@@ -443,11 +512,11 @@ final class AvatarController {
         // when toggled instead of jumping.
         let swimTarget: Float = options.swimMotionEnabled ? 1 : 0
         swimAmount += (swimTarget - swimAmount) * Self.smoothingFactor(deltaTime: deltaTime, timeConstant: 0.5)
-        swimMotion.amount = swimAmount * (1 + 0.8 * idleWeight)   // livelier while waiting
+        swimMotion.amount = swimAmount * (1 + 0.8 * idleWeight) * (1 - 0.85 * dead)   // livelier while waiting; still, dead
         let swim = swimMotion.update(deltaTime: Float(min(deltaTime, 0.1)), mouthOpen: mouthOpen, size: fishSize)
         lastSwimOffset = swim.offset
         // Laughing: head thrown back a little, bouncing and rocking on each "ha".
-        let laughBounce = laughing * laugh.pulse
+        let laughBounce = laughing * laughPulse
         root.position = followPosition * (1 - lapWeight) + swim.offset + (lap?.position ?? .zero) * lapWeight + trickOffset
             + SIMD3<Float>(0, 0.008 * laughBounce + 0.004 * laughing, 0)
         if let pose = hiding?.pose {
@@ -456,6 +525,8 @@ final class AvatarController {
         if let pose = staring {
             root.position += (pose.position - root.position) * pose.weight   // steady up close
         }
+        root.position += SIMD3<Float>(0, 0.02 + 0.005 * sin(0.7 * deadTime), 0) * dead   // floating up
+            + SIMD3<Float>(0, 0.008, 0.006) * waking                                       // a push as she wakes
         // How fast she's going, for the wake (zero while out of sight).
         if root.isEnabled, let last = lastFishPosition, deltaTime > 0 {
             let speed = simd_length(root.position - last) / Float(deltaTime)
@@ -477,7 +548,8 @@ final class AvatarController {
 
         // Hidden, she's out of sight: no bubbles from where her mouth would be (those already
         // out keep rising).
-        if options.mouthBubblesEnabled, !(hiding?.hidden ?? false) {
+        // No bubbles while out of sight or playing dead.
+        if options.mouthBubblesEnabled, !(hiding?.hidden ?? false), deadProgress == 0 {
             updateMouthBubbles(jawOpen: appliedJawOpen, deltaTime: Float(min(deltaTime, 0.1)))
             if options.audioBubblesEnabled {
                 updateAudioBubbles(audio: audio, mouthOpen: mouthOpen, deltaTime: Float(min(deltaTime, 0.1)))
@@ -486,7 +558,7 @@ final class AvatarController {
             }
             updateIdleBubbles(rate: idle.bubbles * idleWeight + moveFace.bubbles, deltaTime: Float(min(deltaTime, 0.1)))
             // A little puff of bubbles on each "ha".
-            if laughing > 0.4, laugh.pulse > 0.5, lastLaughPulse <= 0.5, let mouthEmitter {
+            if laughing > 0.4, laughPulse > 0.5, lastLaughPulse <= 0.5, let mouthEmitter {
                 let origin = mouthEmitter.convert(position: .zero, to: mouthBubbles)
                 let direction = simd_normalize(mouthEmitter.convert(direction: [0, -1, 0], to: mouthBubbles))
                 for _ in 0..<Int.random(in: 3...6) {
@@ -494,7 +566,7 @@ final class AvatarController {
                                              radiusScale: Float.random(in: 0.15...0.45), speedScale: Float.random(in: 0.3...0.7))
                 }
             }
-            lastLaughPulse = laugh.pulse
+            lastLaughPulse = laughPulse
             mouthBubbleSpheres?.update(deltaTime: deltaTime)
         } else {
             mouthBubbleSpheres?.update(deltaTime: deltaTime)
@@ -508,7 +580,22 @@ final class AvatarController {
     /// The face as the fish plays it: acted bigger, laughing, singing big notes, and a move taking
     /// over the mouth (blowing bubbles).
     private func played(_ location: ARFaceAnchor.BlendShapeLocation, _ value: Float) -> Float {
-        blown(location, sung(location, laughed(location, acted(location, value), laughing)))
+        lifeless(location, blown(location, sung(location, laughed(location, acted(location, value), laughing))))
+    }
+
+    /// Playing dead: the lids 30% closed and held (no blinking) over eyes rolled up and a little
+    /// crossed (EyeRig), brows and eyes slack; the mouth stays the actor's.
+    private func lifeless(_ location: ARFaceAnchor.BlendShapeLocation, _ value: Float) -> Float {
+        let dead = Self.smootherstep(deadProgress)
+        guard dead > 0 else { return value }
+        switch location {
+        case .eyeBlinkLeft, .eyeBlinkRight: return value + (0.3 - value) * dead   // 30% closed, held
+        default:
+            let name = location.rawValue
+            let face = name.hasPrefix("mouth") || name.hasPrefix("jaw") || name.hasPrefix("cheek")
+                || name.hasPrefix("tongue")
+            return face ? value : value * (1 - dead)
+        }
     }
 
     /// Acting bigger: every expression pushed toward its full shape (a small one grows up to 2.5x),
@@ -543,9 +630,6 @@ final class AvatarController {
         switch location {
         case .cheekPuff: return value * (1 - takeover) + moveFace.cheekPuff * takeover
         case .mouthPucker: return value * (1 - takeover) + moveFace.pucker * takeover
-        // Sealed: lips pressed together and rolled in.
-        case .mouthRollUpper, .mouthRollLower: return value * (1 - takeover) + 0.7 * moveFace.seal * takeover
-        case .mouthPressLeft, .mouthPressRight: return value * (1 - takeover) + 0.6 * moveFace.seal * takeover
         default:
             let name = location.rawValue
             return name.hasPrefix("mouth") || name.hasPrefix("jaw") || name.hasPrefix("tongue")
@@ -577,7 +661,7 @@ final class AvatarController {
         case .eyeBlinkLeft, .eyeBlinkRight: return value + amount * 0.55 * (1 - value)
         case .eyeSquintLeft, .eyeSquintRight: return value + amount * 0.6 * (1 - value)
         case .browInnerUp: return value + amount * 0.35 * (1 - value)
-        case .jawOpen: return min(1, value + amount * (0.1 + 0.35 * max(0, laugh.pulse)))
+        case .jawOpen: return min(1, value + amount * (0.1 + 0.35 * max(0, laughPulse)))
         case .mouthClose: return value * (1 - amount)
         default: return value
         }
@@ -603,9 +687,13 @@ final class AvatarController {
         guard !session.pendingMoves.isEmpty else { return nil }
         let move = session.pendingMoves.removeFirst()
         switch move {
-        case .hide: return hideShow.isHidden ? nil : move
+        case .hide: return hideShow.isHidden || playsDead ? nil : move
         case .show: return hideShow.isHidden ? move : nil
-        default: return swimAround.isActive || activeTrick != nil || stare.isActive || hideShow.phase != .visible ? nil : move
+        case .playDead: return playsDead || hideShow.phase != .visible ? nil : move
+        case .wakeUp: return playsDead ? move : nil
+        default:
+            return swimAround.isActive || activeTrick != nil || stare.isActive || hideShow.phase != .visible
+                || playsDead || deadProgress > 0 || laughCue != nil ? nil : move
         }
     }
 
@@ -630,8 +718,19 @@ final class AvatarController {
             activeTrick = SwimTrick(kind: .bubbles, direction: side)
         case .shush:
             activeTrick = SwimTrick(kind: .shush, direction: side)
-        case .sealed:
-            activeTrick = SwimTrick(kind: .sealed, direction: side)
+        case .fart:
+            activeTrick = SwimTrick(kind: .fart, direction: side)
+        case .laugh:
+            laughCue = 0
+        case .playDead:
+            swimAround.stop()
+            stare.stop()
+            activeTrick = nil
+            playsDead = true
+            AvatarSession.shared.fishPlaysDead = true
+        case .wakeUp:
+            playsDead = false
+            AvatarSession.shared.fishPlaysDead = false
         case .stare:
             // Her right eye right at the lens, close enough to fill much of the view (its narrow
             // side), whatever the zoom and field of view.
@@ -943,6 +1042,26 @@ final class AvatarController {
 
     /// Bubbles shed by the tail and side fins in a quick move, more the faster the fish turns,
     /// flung outward and left behind to rise.
+    /// A fart: bubbles burst from her back end, backward and down, then rise.
+    private func updateVentBubbles(rate: Float, deltaTime: Float) {
+        guard let mouthBubbleSpheres, rate > 0 else {
+            ventBacklog = 0
+            return
+        }
+        ventBacklog += rate * deltaTime
+        let count = Int(ventBacklog)
+        ventBacklog -= Float(count)
+        guard count > 0 else { return }
+        let origin = body.convert(position: ventPosition, to: mouthBubbles)
+        let direction = simd_normalize(body.convert(direction: [0, -0.4, -1], to: mouthBubbles))
+        for _ in 0..<count {
+            mouthBubbleSpheres.emit(
+                count: 1, origin: origin, direction: direction,
+                radiusScale: Float.random(in: 0.35...1.15), speedScale: Float.random(in: 0.5...1.2)
+            )
+        }
+    }
+
     private func updateWakeBubbles(turnSpeed: Float, deltaTime: Float) {
         guard let mouthBubbleSpheres, !wakeSpots.isEmpty, turnSpeed > 2 else {
             wakeBubbleBacklog = 0

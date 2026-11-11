@@ -8,7 +8,7 @@ import simd
 /// Like a real fish, it works the fins first (a wind-up against the move), then the body goes.
 /// Works in the fish's own frame: +Z forward (toward the camera at rest), +Y up, +X its left.
 struct SwimTrick {
-    enum Kind { case spin, loop, blush, bubbles, shush, sealed }
+    enum Kind { case spin, loop, blush, bubbles, shush, fart }
 
     /// What the move contributes this frame.
     struct Pose {
@@ -29,8 +29,6 @@ struct SwimTrick {
         var cover = SIMD2<Float>(repeating: 0)
         /// The pose a side fin takes as its `cover` goes to 1 (the blush's, by default).
         var finPose: FinPose = .cover
-        /// Lips pressed together and rolled in (sealed), 0...1, under the mouth takeover.
-        var seal: Float = 0
         /// Rosy cheeks, 0...1.
         var blush: Float = 0
         /// The mouth taken over (0...1) for puffed cheeks and puckered lips, and bubbles per second.
@@ -38,6 +36,11 @@ struct SwimTrick {
         var cheekPuff: Float = 0
         var pucker: Float = 0
         var bubbles: Float = 0
+        /// Bubbles per second from her back end (a fart).
+        var ventBubbles: Float = 0
+        /// Where her eyes look over the tracked look (EyeRig.lookOverride): yaw (+ toward her
+        /// left), pitch (+ down), weight 0...1.
+        var gaze = SIMD3<Float>(repeating: 0)
     }
 
     let kind: Kind
@@ -58,7 +61,7 @@ struct SwimTrick {
         case .blush: duration = 3.0
         case .bubbles: duration = BubbleBlow.duration
         case .shush: duration = 3.4
-        case .sealed: duration = 4.2
+        case .fart: duration = 4.6
         }
     }
 
@@ -72,7 +75,7 @@ struct SwimTrick {
         case .blush: return blush(elapsed)
         case .bubbles: return blowBubbles(elapsed)
         case .shush: return shush(elapsed)
-        case .sealed: return sealed(elapsed)
+        case .fart: return fart(elapsed)
         }
     }
 
@@ -181,6 +184,38 @@ struct SwimTrick {
     /// Shush: a side fin folds into a "finger" and comes up in front of pursed lips, the head
     /// leans in with two little "shh" nods and a wisp of bubbles, then the fin goes back down.
     /// `t` is seconds (3.4 in all).
+    /// A fart: a big burst of bubbles from her back end scoots her forward and up with a jolt, a
+    /// tremble and a flick of the tail, then a second little puff; a beat of surprise; then she's
+    /// embarrassed: cheeks fully rosy, both fins up hiding her face (one peeks), head turned away
+    /// and dipped, eyes down; then she gathers herself. `t` is seconds (4.6 in all).
+    private func fart(_ t: Float) -> Pose {
+        let jolt = sin(.pi * Self.ramp(t, 0, 0.45))
+        let tremble = 0.08 * sin(2 * .pi * 12 * t) * (1 - Self.ramp(t, 0, 0.7))
+        let shy = Self.smoothstep(Self.ramp(t, 0.85, 1.35)) * (1 - Self.smoothstep(Self.ramp(t, 3.5, 4.3)))
+        let rosy = Self.smoothstep(Self.ramp(t, 0.7, 1.2)) * (1 - Self.smoothstep(Self.ramp(t, 3.8, 4.6)))
+        let covered = Self.smoothstep(Self.ramp(t, 1.0, 1.4)) * (1 - Self.smoothstep(Self.ramp(t, 3.0, 3.5)))
+        let peek = pow(sin(.pi * Self.ramp(t, 2.0, 2.7)), 2)
+        let fidget = 0.05 * sin(2 * .pi * 0.9 * t) * shy
+        let yaw = direction * (0.32 * shy + fidget) + 0.1 * tremble
+        let pitch = 0.2 * shy - 0.22 * jolt                  // + is nose down; the jolt throws it up
+        let roll = -direction * 0.1 * shy + tremble
+        let peekCover = covered * (1 - 0.5 * peek)
+        let bubbles: Float = (t > 0.03 && t < 0.6 ? 230 : 0) + (t > 0.72 && t < 0.92 ? 140 : 0)
+        return Pose(
+            rotation: simd_quatf(angle: yaw, axis: [0, 1, 0])
+                * simd_quatf(angle: pitch, axis: [1, 0, 0])
+                * simd_quatf(angle: roll, axis: [0, 0, 1]),
+            offset: SIMD3<Float>(0, 0.022, 0.04) * jolt + SIMD3<Float>(0, -0.008, -0.012) * shy,
+            yaw: yaw, pitch: pitch, effort: max(1.0 * jolt, 0.12 * shy),
+            steer: 0,
+            bend: 0.1 * jolt,
+            cover: direction > 0 ? SIMD2(covered, peekCover) : SIMD2(peekCover, covered),
+            blush: rosy,
+            ventBubbles: bubbles,
+            gaze: SIMD3(-direction * 0.35, 0.35, shy)   // away and down
+        )
+    }
+
     private func shush(_ t: Float) -> Pose {
         let up = Self.smootherstep(Self.ramp(t, 0.1, 0.75)) * (1 - Self.smootherstep(Self.ramp(t, 2.6, 3.25)))
         let lips = Self.smoothstep(Self.ramp(t, 0, 0.45)) * (1 - Self.smoothstep(Self.ramp(t, 2.6, 3.2)))
@@ -199,31 +234,6 @@ struct SwimTrick {
             mouthTakeover: lips,
             pucker: 0.7,
             bubbles: shh > 0 && shh < 1 ? 7 : 0
-        )
-    }
-
-    /// My lips are sealed: a side fin, folded, comes to the far corner of the mouth and zips it
-    /// shut, drawn across the lips while they press and roll in behind it; the fin goes, and the
-    /// lips stay sealed for a smug moment with a little nod before they relax. `t` is seconds.
-    private func sealed(_ t: Float) -> Pose {
-        let inOut = Self.smootherstep(Self.ramp(t, 0.05, 0.65)) * (1 - Self.smootherstep(Self.ramp(t, 1.6, 2.15)))
-        let zip = Self.smootherstep(Self.ramp(t, 0.7, 1.55))
-        let lips = Self.smoothstep(Self.ramp(t, 0.5, 0.8)) * (1 - Self.smoothstep(Self.ramp(t, 3.5, 4.1)))
-        let seal = Self.smoothstep(Self.ramp(t, 0.7, 1.6)) * (1 - Self.smoothstep(Self.ramp(t, 3.5, 4.1)))
-        let smug = Self.smoothstep(Self.ramp(t, 2.0, 2.4)) * (1 - Self.smoothstep(Self.ramp(t, 3.3, 3.8)))
-        let nod = 0.06 * max(0, sin(.pi * Self.ramp(t, 2.4, 2.9)))
-        let pitch = 0.04 * inOut - 0.05 * smug + nod      // a little chin-up when sealed
-        let roll = -direction * 0.08 * smug
-        return Pose(
-            rotation: simd_quatf(angle: pitch, axis: [1, 0, 0]) * simd_quatf(angle: roll, axis: [0, 0, 1]),
-            offset: .zero,
-            yaw: 0, pitch: pitch, effort: 0.12 * inOut,
-            steer: 0,
-            bend: 0,
-            cover: direction > 0 ? SIMD2(inOut, 0) : SIMD2(0, inOut),
-            finPose: FinPose.zip(zip),
-            seal: seal,
-            mouthTakeover: lips
         )
     }
 

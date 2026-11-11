@@ -141,6 +141,25 @@ void causticFinSurface(realitykit::surface_parameters params) {
     causticSurfaceImpl(params, float4(32.0, 6.0, 1.4, 1.0));
 }
 
+// The eyeballs: their own colours, glossy, without the caustics or the water's tint.
+[[visible]]
+void eyeSurface(realitykit::surface_parameters params) {
+    constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
+    auto tex = params.textures();
+    auto material = params.material_constants();
+
+    float2 uv = params.geometry().uv0();
+    uv.y = 1.0 - uv.y;
+
+    auto surface = params.surface();
+    surface.set_base_color(tex.base_color().sample(s, uv).rgb * half3(material.base_color_tint()));
+    surface.set_roughness(tex.roughness().sample(s, uv).r * half(material.roughness_scale()));
+    surface.set_metallic(tex.metallic().sample(s, uv).r * half(material.metallic_scale()));
+    surface.set_specular(tex.specular().sample(s, uv).r * half(material.specular_scale()));
+    surface.set_clearcoat(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()));
+    surface.set_clearcoat_roughness(tex.clearcoat_roughness().sample(s, uv).r * half(material.clearcoat_roughness_scale()));
+}
+
 // Lightweight PBR passthrough used while caustics are disabled. Keeping a CustomMaterial on
 // animated meshes avoids changing RealityKit's render path for skinning and blend shapes.
 [[visible]]

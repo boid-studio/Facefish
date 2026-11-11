@@ -23,7 +23,10 @@ struct ARFaceApp: App {
                         case .blowBubbles: AvatarSession.shared.pendingMoves.append(.bubbles)
                         case .stare: AvatarSession.shared.pendingMoves.append(.stare)
                         case .shush: AvatarSession.shared.pendingMoves.append(.shush)
-                        case .sealed: AvatarSession.shared.pendingMoves.append(.sealed)
+                        case .fart: AvatarSession.shared.pendingMoves.append(.fart)
+                        case .laugh: AvatarSession.shared.pendingMoves.append(.laugh)
+                        case .playDead: AvatarSession.shared.pendingMoves.append(.playDead)
+                        case .wakeUp: AvatarSession.shared.pendingMoves.append(.wakeUp)
                         case .hide: AvatarSession.shared.pendingMoves.append(.hide)
                         case .show: AvatarSession.shared.pendingMoves.append(.show)
                         }
@@ -99,6 +102,8 @@ final class AvatarSession {
     var pendingMoves: [SwimMove] = []
     /// The fish is backing out of frame or out of sight (HideShow), for the Hide/Show button.
     var fishHidden = false
+    /// The fish is playing dead, for the Play dead / Wake up button.
+    var fishPlaysDead = false
     /// What the fish is wearing (the hat button), kept between launches. An accessory new to this
     /// phone starts as it's worn by default (Accessory.wornByDefault).
     var wornAccessories: Set<Accessory> = AvatarSession.loadWornAccessories() {
@@ -129,8 +134,12 @@ enum SwimMove: CaseIterable {
     case lap, spin, loop, blush, bubbles
     /// Up to the lens, staring into it with her right eye (Stare).
     case stare
-    /// A fin "finger" to her lips; zipping her lips shut (SwimTrick).
-    case shush, sealed
+    /// A fin "finger" to her lips; a fart and an embarrassed blush (SwimTrick).
+    case shush, fart
+    /// A big laugh on cue: "ha-ha-ha" (AvatarController's laugh, without the detector).
+    case laugh
+    /// Belly up, eyes closed, fins limp, until woken (a toggle, like hide and show).
+    case playDead, wakeUp
     /// Back out of frame and stay hidden, then swim back in (HideShow).
     case hide, show
 }

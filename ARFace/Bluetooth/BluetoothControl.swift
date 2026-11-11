@@ -13,7 +13,10 @@ enum ControlCommand: String, Codable, CaseIterable, Identifiable {
     case blowBubbles
     case stare
     case shush
-    case sealed
+    case fart
+    case laugh
+    case playDead
+    case wakeUp
     case hide
     case show
 
@@ -31,7 +34,10 @@ enum ControlCommand: String, Codable, CaseIterable, Identifiable {
         case .blowBubbles: "Blow bubbles"
         case .stare: "Stare"
         case .shush: "Shush"
-        case .sealed: "My lips are sealed"
+        case .fart: "Fart"
+        case .laugh: "Laugh"
+        case .playDead: "Play dead"
+        case .wakeUp: "Wake up"
         case .hide: "Hide"
         case .show: "Show"
         }

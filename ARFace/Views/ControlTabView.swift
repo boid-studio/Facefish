@@ -201,18 +201,29 @@ struct ControlActionsView: View {
         var id: String { command.id }
     }
 
-    private let actions = [
-        Action(title: "Ping", systemImage: "dot.radiowaves.left.and.right", command: .ping),
-        Action(title: "Swim a lap", systemImage: "point.forward.to.point.capsulepath", command: .swimLap),
-        Action(title: "Spin", systemImage: "rotate.3d", command: .spin),
-        Action(title: "Loop", systemImage: "arrow.clockwise", command: .loop),
-        Action(title: "Blush", systemImage: "heart", command: .blush),
-        Action(title: "Blow bubbles", systemImage: "bubbles.and.sparkles", command: .blowBubbles),
-        Action(title: "Stare", systemImage: "eyes", command: .stare),
-        Action(title: "Shush", systemImage: "hand.point.up", command: .shush),
-        Action(title: "My lips are sealed", systemImage: "mouth", command: .sealed),
-        Action(title: "Hide", systemImage: "eye.slash", command: .hide),
-        Action(title: "Show", systemImage: "eye", command: .show),
+    /// The actions in groups, three across, so they all fit on screen.
+    private let groups: [(title: String, actions: [Action])] = [
+        ("Swim", [
+            Action(title: "Lap", systemImage: "point.forward.to.point.capsulepath", command: .swimLap),
+            Action(title: "Spin", systemImage: "rotate.3d", command: .spin),
+            Action(title: "Loop", systemImage: "arrow.clockwise", command: .loop),
+        ]),
+        ("Feelings", [
+            Action(title: "Blush", systemImage: "heart", command: .blush),
+            Action(title: "Laugh", systemImage: "face.smiling", command: .laugh),
+            Action(title: "Fart", systemImage: "wind", command: .fart),
+        ]),
+        ("Gags", [
+            Action(title: "Stare", systemImage: "eyes", command: .stare),
+            Action(title: "Shush", systemImage: "hand.point.up", command: .shush),
+            Action(title: "Bubbles", systemImage: "bubbles.and.sparkles", command: .blowBubbles),
+        ]),
+        ("Stage", [
+            Action(title: "Hide", systemImage: "eye.slash", command: .hide),
+            Action(title: "Show", systemImage: "eye", command: .show),
+            Action(title: "Play dead", systemImage: "zzz", command: .playDead),
+            Action(title: "Wake up", systemImage: "sun.max", command: .wakeUp),
+        ]),
     ]
 
     var body: some View {
@@ -223,18 +234,25 @@ struct ControlActionsView: View {
                         .foregroundStyle(.secondary)
                         .padding(.top)
                 }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 16)], spacing: 16) {
-                    ForEach(actions) { action in
-                        Button { bluetooth.send(action.command) } label: {
-                            VStack(spacing: 12) {
-                                Image(systemName: action.systemImage).font(.system(size: 44))
-                                Text(action.title).font(.title3.bold())
+                VStack(alignment: .leading, spacing: 18) {
+                    ForEach(groups, id: \.title) { group in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(group.title).font(.headline).foregroundStyle(.secondary)
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                                ForEach(group.actions) { action in
+                                    Button { bluetooth.send(action.command) } label: {
+                                        VStack(spacing: 6) {
+                                            Image(systemName: action.systemImage).font(.system(size: 28))
+                                            Text(action.title).font(.subheadline.bold()).lineLimit(1).minimumScaleFactor(0.7)
+                                        }
+                                        .frame(maxWidth: .infinity, minHeight: 84)
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .buttonBorderShape(.roundedRectangle(radius: 16))
+                                    .disabled(!bluetooth.isConnected || bluetooth.isSending)
+                                }
                             }
-                            .frame(maxWidth: .infinity, minHeight: 150)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.roundedRectangle(radius: 20))
-                        .disabled(!bluetooth.isConnected || bluetooth.isSending)
                     }
                 }
                 .padding()

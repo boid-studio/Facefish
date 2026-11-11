@@ -343,6 +343,11 @@ final class UnderwaterSceneController {
     ) {
         let fin = FinWaveConfiguration.matching(entity.name) ?? inheritedFin
         let isEyelid = inheritedEyelid || entity.name.localizedCaseInsensitiveContains("eyelid")
+        // The eyeballs: clean, glossy, without the caustics' glints or the water's tint.
+        let isEyeball = !isEyelid && sequence(first: entity, next: \.parent).contains { ancestor in
+            let name = ancestor.name.lowercased().filter(\.isLetter)
+            return name == "eyel" || name == "eyer"
+        }
         let isAccessory = inheritedAccessory || Accessory.part(named: entity.name) != nil
         if let existingModel = entity.components[ModelComponent.self] {
             let partCount = existingModel.mesh.contents.models.map(\.parts.count).reduce(0, +)
@@ -364,9 +369,9 @@ final class UnderwaterSceneController {
                 var model = existingModel
                 let originalMaterials = model.materials
                 let enabledMaterials = isEyelid ? originalMaterials : originalMaterials.map {
-                    customMaterial(from: $0, causticsEnabled: true, fog: 0, fin: fin) ?? $0
+                    (isEyeball ? eyeMaterial(from: $0) : customMaterial(from: $0, causticsEnabled: true, fog: 0, fin: fin)) ?? $0
                 }
-                let disabledMaterials = isEyelid ? originalMaterials : originalMaterials.map {
+                let disabledMaterials = isEyelid ? originalMaterials : isEyeball ? enabledMaterials : originalMaterials.map {
                     customMaterial(from: $0, causticsEnabled: false, fog: 0, fin: fin) ?? $0
                 }
                 model.materials = enabledMaterials
@@ -375,7 +380,7 @@ final class UnderwaterSceneController {
                     entity: entity,
                     enabledMaterials: enabledMaterials,
                     disabledMaterials: disabledMaterials,
-                    kind: fin == nil && !isEyelid ? .surface : nil
+                    kind: fin == nil && !isEyelid && !isEyeball ? .surface : nil
                 ))
             } else if fin != nil {
                 logger.error("Fin mesh \(entity.name, privacy: .public) has multiple parts; fin ripple is unavailable.")
@@ -410,6 +415,16 @@ final class UnderwaterSceneController {
             return nil
         }
         return (enabled, disabled)
+    }
+
+    /// The eyeballs' material (eyeSurface): clean and glossy.
+    private func eyeMaterial(from base: any Material) -> CustomMaterial? {
+        guard let library else { return nil }
+        guard var material = try? CustomMaterial(from: base, surfaceShader: .init(named: "eyeSurface", in: library)) else {
+            return nil
+        }
+        material.custom.value = .zero
+        return material
     }
 
     private func customMaterial(

@@ -108,33 +108,34 @@ struct ContentView: View {
 
     /// Makes the fish swim a lap, spin, loop or blush (later also from the companion).
     private var moveButtons: some View {
-        // From the left, clear of the settings button on the right.
-        HStack(spacing: 10) {
-            moveButton(.lap, systemImage: "point.forward.to.point.capsulepath", label: "Swim a lap")
-            moveButton(.spin, systemImage: "rotate.3d", label: "Spin")
-            moveButton(.loop, systemImage: "arrow.clockwise", label: "Loop")
-            moveButton(.blush, systemImage: "heart", label: "Blush")
-            moveButton(.bubbles, systemImage: "bubbles.and.sparkles", label: "Blow bubbles")
-            gesturesMenu
+        // From the left, clear of the buttons on the right: moves above, gestures below.
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                moveButton(.lap, systemImage: "point.forward.to.point.capsulepath", label: "Swim a lap")
+                moveButton(.spin, systemImage: "rotate.3d", label: "Spin")
+                moveButton(.loop, systemImage: "arrow.clockwise", label: "Loop")
+                moveButton(.blush, systemImage: "heart", label: "Blush")
+                moveButton(.bubbles, systemImage: "bubbles.and.sparkles", label: "Blow bubbles")
+                moveButton(.stare, systemImage: "eyes", label: "Stare")
+            }
+            HStack(spacing: 10) {
+                moveButton(.shush, systemImage: "hand.point.up", label: "Shush")
+                moveButton(.fart, systemImage: "wind", label: "Fart")
+                moveButton(.laugh, systemImage: "face.smiling", label: "Laugh")
+                playDeadButton
+            }
         }
         .padding(.leading, 16)
         .padding(.bottom, 24)
     }
 
-    /// Gestures: staring into the lens, shush, my lips are sealed.
-    private var gesturesMenu: some View {
-        Menu {
-            Button("Stare", systemImage: "eyes") { avatarSession.pendingMoves.append(.stare) }
-            Button("Shush", systemImage: "hand.point.up") { avatarSession.pendingMoves.append(.shush) }
-            Button("My lips are sealed", systemImage: "mouth") { avatarSession.pendingMoves.append(.sealed) }
-        } label: {
-            Image(systemName: "hand.raised")
-                .font(.title3)
-                .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
+    /// One button: plays dead, or wakes her while she is.
+    @ViewBuilder private var playDeadButton: some View {
+        if avatarSession.fishPlaysDead {
+            moveButton(.wakeUp, systemImage: "sun.max", label: "Wake up")
+        } else {
+            moveButton(.playDead, systemImage: "zzz", label: "Play dead")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Gestures")
     }
 
     /// One button: hides the fish, or shows her again while she's hidden.
