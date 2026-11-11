@@ -48,6 +48,8 @@ final class AvatarController {
     private var laughReadoutTime: Float = 0
     /// This frame's laugh (0...1), for the face.
     private var laughing: Float = 0
+    /// How rosy she is (0...1, the last frame's blush), for her shy lids.
+    private var blushing: Float = 0
     /// Each "ha" (-1...1): the detector's, or the Laugh action's.
     private var laughPulse: Float = 0
     /// The Laugh action, seconds in (nil when not laughing on cue).
@@ -354,7 +356,7 @@ final class AvatarController {
         } else {
             // Without a face too: playing dead closes the eyes.
             let weight: (ARFaceAnchor.BlendShapeLocation) -> Float = { [self] location in
-                lifeless(location, idle.weight(location, eyeRange: eyeRange))
+                lifeless(location, bashful(location, idle.weight(location, eyeRange: eyeRange)))
             }
             eyeRig.update(weight: weight, deltaTime: deltaTime)
             lidRig.update(weight: weight, deltaTime: deltaTime)
@@ -496,6 +498,7 @@ final class AvatarController {
         // Over the eyes the lids stay open, so the fins (posed against open lids) never cut them.
         lidRig.maxClosed = finPose.clearsEye ? 1 - 0.95 * cover : SIMD2(repeating: 1)
         applyFaceShader(bend: bend, blush: max(blush, 0.3 * laughing))
+        blushing = blush
 
         // Once fully at rest, nil hands the fins over to their idle swim.
         let finAngles = presence > 0 ? lastFinAngles : nil
@@ -580,7 +583,18 @@ final class AvatarController {
     /// The face as the fish plays it: acted bigger, laughing, singing big notes, and a move taking
     /// over the mouth (blowing bubbles).
     private func played(_ location: ARFaceAnchor.BlendShapeLocation, _ value: Float) -> Float {
-        lifeless(location, blown(location, sung(location, laughed(location, acted(location, value), laughing))))
+        lifeless(location, bashful(location, blown(location, sung(location, laughed(location, acted(location, value), laughing)))))
+    }
+
+    /// Blushing (the blush, the fart's embarrassment): lids lowered a little, shyly, as much as
+    /// she's rosy. While a fin covers an eye that lid stays open (LidRig.maxClosed), so it shows as
+    /// the fins come down and the blush lingers.
+    private func bashful(_ location: ARFaceAnchor.BlendShapeLocation, _ value: Float) -> Float {
+        guard blushing > 0 else { return value }
+        switch location {
+        case .eyeBlinkLeft, .eyeBlinkRight: return value + blushing * 0.4 * (1 - value)
+        default: return value
+        }
     }
 
     /// Playing dead: the lids 30% closed and held (no blinking) over eyes rolled up and a little

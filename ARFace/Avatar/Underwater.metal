@@ -48,12 +48,16 @@ static half3 waterColor(float y, WaterPalette palette) {
 
 static half3 underwaterBackdrop(float3 position, float time, WaterPalette palette) {
     half3 color = waterColor(position.y, palette);
-    float u = position.x;
+    // The rays sway together with the surface swell (more toward the top, where the light comes
+    // in), drift past each other, and each brightens and dims on its own beat.
+    float depth = saturate((position.y + 0.5) / 1.2);
+    float u = position.x
+        + (0.035 * sin(time * 0.55 + position.y * 1.7) + 0.02 * sin(time * 1.05 + 2.0)) * (0.4 + 0.6 * depth);
     float rays = 0;
-    rays += pow(saturate(sin(u * 23.0 + time * 0.23) * 0.5 + 0.5), 6.0);
-    rays += pow(saturate(sin(u * 13.7 - time * 0.17 + 1.3) * 0.5 + 0.5), 8.0) * 0.8;
-    rays += pow(saturate(sin(u * 37.3 + time * 0.31 + 4.1) * 0.5 + 0.5), 10.0) * 0.5;
-    rays += pow(saturate(sin(u * 51.9 - time * 0.27 + 2.6) * 0.5 + 0.5), 12.0) * 0.4;
+    rays += pow(saturate(sin(u * 23.0 + time * 0.60) * 0.5 + 0.5), 6.0) * (0.75 + 0.25 * sin(time * 0.83 + 0.4));
+    rays += pow(saturate(sin(u * 13.7 - time * 0.45 + 1.3) * 0.5 + 0.5), 8.0) * 0.8 * (0.7 + 0.3 * sin(time * 0.61 + 2.1));
+    rays += pow(saturate(sin(u * 37.3 + time * 0.80 + 4.1) * 0.5 + 0.5), 10.0) * 0.5 * (0.6 + 0.4 * sin(time * 1.13 + 4.7));
+    rays += pow(saturate(sin(u * 51.9 - time * 0.70 + 2.6) * 0.5 + 0.5), 12.0) * 0.4 * (0.6 + 0.4 * sin(time * 0.97 + 1.2));
     float rayFade = pow(saturate((position.y + 0.5) / 1.2), 2.0);
     return color + palette.rays * half(rays * rayFade * 0.35);
 }

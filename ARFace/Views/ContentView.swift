@@ -30,6 +30,7 @@ struct ContentView: View {
                             .padding(24)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(.black)
+                            .environment(\.colorScheme, .dark)   // light text on the black
                         } else {
                             AvatarView(
                                 tracker: tracker,
@@ -54,7 +55,7 @@ struct ContentView: View {
                     .modifier(CanvasOrientationEffect(isUpsideDown: tracker.isPhoneUpsideDown))
                 }
                 // Outside the polling timeline, so it isn't rebuilt under your finger.
-                .overlay { ActionDrawer(isReady: isAvatarReady) }
+                .overlay { ActionDrawer(isReady: isAvatarReady, settingsOnly: avatarSession.externalDisplayScene != nil) }
                 .inspector(isPresented: $avatarSession.showDebug) {
                     DebugInspector(onShowControl: { showBluetooth = true })
                 }

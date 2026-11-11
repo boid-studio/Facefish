@@ -3,9 +3,12 @@ import SwiftUI
 /// The main phone's controls, out of the fish's way: one button in the corner that slides up a
 /// glassy drawer: her actions and what she wears in three tabs, one row each, and settings.
 /// It stays open through taps; tap outside it or drag it down to close.
+/// With an external display connected, only a settings button.
 struct ActionDrawer: View {
-    /// The fish is loaded: actions and accessories work.
+    /// The fish is loaded: actions and accessories work (tabs and settings work regardless).
     let isReady: Bool
+    /// Only the settings button, no drawer (while an external display shows the fish).
+    var settingsOnly = false
     @State private var avatarSession = AvatarSession.shared
     @State private var isOpen = false
     @State private var dragOffset: CGFloat = 0
@@ -52,7 +55,9 @@ struct ActionDrawer: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            if isOpen {
+            if settingsOnly {
+                settingsButton
+            } else if isOpen {
                 // A tap anywhere else closes it.
                 Color.black.opacity(0.001)
                     .ignoresSafeArea()
@@ -88,6 +93,24 @@ struct ActionDrawer: View {
         .padding(.trailing, 20)
         .padding(.bottom, 44)
         .accessibilityLabel("Actions")
+    }
+
+    private var settingsButton: some View {
+        Button {
+            taps += 1
+            avatarSession.showDebug = true
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.title2)
+                .frame(width: 60, height: 60)
+                .contentShape(Circle())
+        }
+        .buttonStyle(PressStyle())
+        .glass(Circle())
+        .foregroundStyle(.primary)
+        .padding(.trailing, 20)
+        .padding(.bottom, 44)
+        .accessibilityLabel("Settings")
     }
 
     /// The drawer's tabs, each one row high, so it stays low under the fish.
@@ -128,6 +151,8 @@ struct ActionDrawer: View {
             }
             // The same height on every tab, so switching doesn't make it jump.
             .frame(height: 82, alignment: .top)
+            // Until the fish is loaded; the tabs and settings stay usable.
+            .disabled(!isReady)
         }
         .padding(.horizontal, 14)
         .padding(.top, 6)
@@ -138,7 +163,6 @@ struct ActionDrawer: View {
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity)
         .foregroundStyle(.primary)
-        .disabled(!isReady)
     }
 
     private var wearRow: some View {
