@@ -63,7 +63,14 @@ struct AvatarView: View {
                 controller.viewAspect = viewAspect
                 content.add(controller.sceneRoot)
                 updateSubscription = content.subscribe(to: SceneEvents.Update.self) { event in
+                    let started = CACurrentMediaTime()
+                    defer {
+                        // What this frame's update cost, and once a second the summary (Benchmark).
+                        PerformanceMetrics.shared.recordUpdate(ms: (CACurrentMediaTime() - started) * 1000)
+                        if let sample = PerformanceMetrics.shared.sampleIfDue() { Benchmark.log(sample) }
+                    }
                     avatarDebug.recordFrame(deltaTime: event.deltaTime)
+                    for part in Benchmark.switchedOff where avatarDebug[scene: part] { avatarDebug[scene: part] = false }
                     let options = avatarDebug.renderOptions
                     controller.cameraDistance = camera.position.z   // the zoom
                     controller.phoneAcceleration = MotionTracker.shared.latest
@@ -85,10 +92,9 @@ struct AvatarView: View {
                         options: options
                     )
                     if screenSpaceGlass {
-                        glassFrame.update(
-                            spheres: underwater.glassSpheres + controller.glassSpheres,
-                            cameraZ: camera.position.z
-                        )
+                        let spheres = underwater.glassSpheres + controller.glassSpheres
+                        PerformanceMetrics.shared.recordBubbles(spheres.count)
+                        glassFrame.update(spheres: spheres, cameraZ: camera.position.z)
                     }
                 }
                 self.controller = controller

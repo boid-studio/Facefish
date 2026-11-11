@@ -393,15 +393,17 @@ final class FinRig {
         }
     }
 
+    /// The ripple runs on the shader's own clock (finWave in Underwater.metal), so the fins'
+    /// materials only change when its strength or speed does, not every frame.
     private func updateWaves(mouthOpen: Float, deltaTime: Float) {
-        let speedMultiplier = 1 + 0.6 * min(1, max(0, mouthOpen))
-        for index in waveTargets.indices {
-            waveTargets[index].phase += waveTargets[index].configuration.speed * finWaveSpeed * speedMultiplier * deltaTime
-        }
+        guard finWave != appliedWave.strength || finWaveSpeed != appliedWave.speed else { return }
         updateWaveMaterials(amplitudeScale: finWave)
     }
 
+    private var appliedWave: (strength: Float, speed: Float) = (-1, -1)
+
     private func updateWaveMaterials(amplitudeScale: Float) {
+        appliedWave = (amplitudeScale, finWaveSpeed)
         for target in waveTargets {
             guard var component = target.model.components[ModelComponent.self] else { continue }
             component.materials = component.materials.map { base in
@@ -410,7 +412,7 @@ final class FinRig {
                     target.configuration.amplitude * amplitudeScale,
                     target.configuration.wavelength,
                     target.configuration.falloff,
-                    target.phase
+                    target.configuration.speed * finWaveSpeed   // cycles per second
                 ]
                 return material
             }

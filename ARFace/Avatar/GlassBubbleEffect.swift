@@ -72,6 +72,10 @@ struct GlassBubbleEffect: PostProcessEffect {
     }
 
     mutating func postProcess(context: borrowing PostProcessEffectContext<any MTLCommandBuffer>) {
+        // The GPU time of this frame's command buffer, for PerformanceMetrics.
+        context.commandBuffer.addCompletedHandler { buffer in
+            PerformanceMetrics.shared.recordGPU(ms: (buffer.gpuEndTime - buffer.gpuStartTime) * 1000)
+        }
         let spheres = frame.snapshot()
         guard let encoder = context.commandBuffer.makeComputeCommandEncoder() else {
             logger.error("Could not encode glass bubbles; copying the scene without bubbles.")

@@ -2,7 +2,7 @@
 #include <RealityKit/RealityKit.h>
 using namespace metal;
 
-constant int kWaveCount = 8;   // fewer waves = cheaper caustics; 8 still looks organic
+constant int kWaveCount = 6;   // fewer waves = cheaper caustics (the GPU's biggest cost on the fish); 6 still looks organic
 
 // The water's colours (SceneLook, the control app's Scene tab): the depth gradient and the light
 // rays. Each material carries them in its custom texture, 5 x 1 texels: deep, mid, shallow, rays,
@@ -105,8 +105,11 @@ static void causticSurfaceImpl(realitykit::surface_parameters params, float4 cus
     emissive += waterScatter(position, tintScale, params.uniforms().time(), palette);
     float3 normal = normalize(params.geometry().normal());
     float facing = saturate(normal.y);
-    half3 light = caustics(position.xz * custom.x, params.uniforms().time() * 0.5 * custom.w, custom.y);
-    emissive += baseColor * light * half3(0.75, 0.95, 1.0) * half(custom.z * facing);
+    // Only where they land (facing up, and on): the pattern is the costly part.
+    if (facing > 0.0 && custom.z > 0.0) {
+        half3 light = caustics(position.xz * custom.x, params.uniforms().time() * 0.5 * custom.w, custom.y);
+        emissive += baseColor * light * half3(0.75, 0.95, 1.0) * half(custom.z * facing);
+    }
 
     auto surface = params.surface();
     surface.set_base_color(baseColor);
@@ -161,7 +164,9 @@ static void finWave(realitykit::geometry_parameters params, float3 axis, float c
     float4 custom = params.uniforms().custom_parameter();
     float2 uv = params.geometry().uv1();
     float u = clamp(uv.x, 0.0, 1.0);
-    float wave = sin(6.2831853 * (u / custom.y - custom.w + uv.y * cross));
+    // custom: x amplitude, y wavelength, z falloff, w speed (cycles per second, on the shader's clock).
+    float phase = fract(params.uniforms().time() * custom.w);
+    float wave = sin(6.2831853 * (u / custom.y - phase + uv.y * cross));
     params.geometry().set_model_position_offset(axis * custom.x * pow(u, custom.z) * wave);
 }
 
@@ -273,11 +278,15 @@ static half3 faceCaustics(thread half3 &baseColor, float tuning, float3 position
     // Light direction: 0 = straight down, positive tilts toward the viewer (5 degree steps).
     float angle = (angleStep - 12.0) * 0.0872665;
     float3 toLight = float3(0.0, cos(angle), sin(angle));
-    float2 projected = float2(position.x, position.z - position.y * tan(angle));
-    half3 light = caustics(projected * 22.0 * scale, t * 0.6 * speed, 9.0);   // pattern per metre, focus
-    light = pow(light, half3(0.9)) * half(1.4);          // thick, bright lines
     float facing = saturate(dot(normal, toLight));
-    half3 emissive = baseColor * light * half3(0.8, 0.97, 1.0) * half(strength * facing);
+    half3 emissive = half3(0.0);
+    // Only where they land (facing the light, and on): the pattern is the costly part.
+    if (facing > 0.0 && strength > 0.0) {
+        float2 projected = float2(position.x, position.z - position.y * tan(angle));
+        half3 light = caustics(projected * 22.0 * scale, t * 0.6 * speed, 9.0);   // pattern per metre, focus
+        light = pow(light, half3(0.9)) * half(1.4);      // thick, bright lines
+        emissive = baseColor * light * half3(0.8, 0.97, 1.0) * half(strength * facing);
+    }
     baseColor *= half(1.0 - 0.25 * saturate(strength));  // a little darker between the lines
     return emissive + waterScatter(position, tintScale, t, palette);
 }

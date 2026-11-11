@@ -30,6 +30,13 @@ struct RenderingDebugSection: View {
             Text("\(model.framesPerSecond, specifier: "%.1f") FPS")
                 .monospacedDigit()
         }
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            let metrics = PerformanceMetrics.shared.latest
+            LabeledContent("CPU / GPU") {
+                Text("\(metrics.cpuPercent, specifier: "%.0f")% · update \(metrics.updateMs, specifier: "%.2f") ms · GPU \(metrics.gpuMs, specifier: "%.1f") ms")
+                    .monospacedDigit()
+            }
+        }
         LabeledContent("Phone temperature") {
             switch ProcessInfo.processInfo.thermalState {
             case .nominal: Text("Normal")

@@ -30,12 +30,6 @@ kernel void glassBubbles(
     constexpr sampler depthSampler(coord::normalized, address::clamp_to_edge, filter::nearest);
     float2 size = float2(output.get_width(), output.get_height());
     float2 uv = (float2(pixel) + 0.5) / size;
-    float2 ndc = float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
-    float4 rayPoint = inverseProjection * float4(ndc, 0.5, 1.0);
-    float3 ray = normalize(rayPoint.xyz / rayPoint.w);
-    float4 scenePoint = inverseProjection * float4(ndc, depth.sample(depthSampler, uv).r, 1.0);
-    float3 scenePosition = scenePoint.xyz / scenePoint.w;
-    float sceneDistance = -scenePosition.z > 0.0 ? length(scenePosition) : INFINITY;
     // Seen through moving water: the image wavers in a slow, swirling flow (look[4]: strength,
     // time), measured in the screen's narrow side so it's the same in portrait and on the round
     // display, with a faint colour fringe where it bends.
@@ -57,8 +51,20 @@ kernel void glassBubbles(
         color = scene.sample(linearSampler, uv);
     }
 
+    // Only where bubbles are (most of the screen has none): the view ray and the scene's depth.
     uint tile = (pixel.y / tileInfo.y) * tileInfo.x + pixel.x / tileInfo.y;
-    for (uint k = tileOffsets[tile]; k < tileOffsets[tile + 1]; ++k) {
+    uint first = tileOffsets[tile], last = tileOffsets[tile + 1];
+    float3 ray = float3(0.0), scenePosition = float3(0.0);
+    float sceneDistance = INFINITY;
+    if (first < last) {
+        float2 ndc = float2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+        float4 rayPoint = inverseProjection * float4(ndc, 0.5, 1.0);
+        ray = normalize(rayPoint.xyz / rayPoint.w);
+        float4 scenePoint = inverseProjection * float4(ndc, depth.sample(depthSampler, uv).r, 1.0);
+        scenePosition = scenePoint.xyz / scenePoint.w;
+        sceneDistance = -scenePosition.z > 0.0 ? length(scenePosition) : INFINITY;
+    }
+    for (uint k = first; k < last; ++k) {
         uint i = tileIndices[k];
         float4 bound = bounds[i];
         if (any(uv < bound.xy) || any(uv > bound.zw)) continue;

@@ -598,6 +598,7 @@ final class AvatarController {
     /// Hide and Show work at any time (hide interrupts a move); other moves only while the fish is
     /// in view and not already moving.
     private func nextMove() -> SwimMove? {
+        if let move = Benchmark.move() { return move }   // benchmark mode: the same run every time
         let session = AvatarSession.shared
         guard !session.pendingMoves.isEmpty else { return nil }
         let move = session.pendingMoves.removeFirst()
