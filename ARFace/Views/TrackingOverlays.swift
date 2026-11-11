@@ -61,23 +61,26 @@ struct CenterFaceBanner: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.5)) { context in
-            Group {
-                if calibration.isCapturing {
-                    Label("Centering face – hold a relaxed face…", systemImage: "viewfinder")
-                } else if let last = calibration.lastCapture,
-                          context.date.timeIntervalSince(last.date) < 2.5 {
-                    Label(last.succeeded ? "Face centered" : "Centering failed – no face found",
-                          systemImage: last.succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(last.succeeded ? .green : .orange)
-                }
+            // The capsule only around a message: empty, it showed as a blank pill.
+            if calibration.isCapturing {
+                pill(Label("Centering face – hold a relaxed face…", systemImage: "viewfinder"))
+            } else if let last = calibration.lastCapture,
+                      context.date.timeIntervalSince(last.date) < 2.5 {
+                pill(Label(last.succeeded ? "Face centered" : "Centering failed – no face found",
+                           systemImage: last.succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(last.succeeded ? .green : .orange))
             }
+        }
+        .animation(.default, value: calibration.isCapturing)
+        .allowsHitTesting(false)
+    }
+
+    private func pill(_ label: some View) -> some View {
+        label
             .font(.headline)
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             .background(.ultraThinMaterial, in: Capsule())
             .transition(.opacity)
-        }
-        .animation(.default, value: calibration.isCapturing)
-        .allowsHitTesting(false)
     }
 }

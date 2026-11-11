@@ -40,7 +40,8 @@ struct ContentView: View {
                     }
                     .ignoresSafeArea()
                     .overlay(alignment: .top) {
-                        if isAvatarReady { TrackingStatusBanner(tracker: tracker) }
+                        // Below the Dynamic Island (the canvas ignores the safe area).
+                        if isAvatarReady { TrackingStatusBanner(tracker: tracker).padding(.top, screenInsets.top) }
                     }
                     .overlay(alignment: .bottom) {
                         if isAvatarReady { CenterFaceBanner().padding(.bottom, 32) }
@@ -51,25 +52,18 @@ struct ContentView: View {
                         }
                     }
                     .modifier(CanvasOrientationEffect(isUpsideDown: tracker.isPhoneUpsideDown))
-                    .overlay(alignment: .bottomTrailing) {
-                        VStack(spacing: 12) {
-                            if isAvatarReady { hideShowButton }
-                            if isAvatarReady, !avatarSession.availableAccessories.isEmpty { accessoriesMenu }
-                            settingsButton
-                        }
-                        .padding(.bottom, 24)
-                        .padding(.trailing, 16)
-                    }
-                    .overlay(alignment: .bottomLeading) {
-                        if isAvatarReady { moveButtons }
-                    }
                 }
+                // Outside the polling timeline, so it isn't rebuilt under your finger.
+                .overlay { ActionDrawer(isReady: isAvatarReady) }
                 .inspector(isPresented: $avatarSession.showDebug) {
                     DebugInspector(onShowControl: { showBluetooth = true })
                 }
             }
         }
         .background { ExternalDisplayAccessoryRegistrar().frame(width: 0, height: 0) }
+        // Full screen on the main phone: no clock, signal or battery, and the home bar tucked away.
+        .statusBarHidden(!bluetooth.isControlMode)
+        .persistentSystemOverlays(bluetooth.isControlMode ? .automatic : .hidden)
         .sheet(isPresented: $showBluetooth) { BluetoothControlView(showsDone: true) }
         .onAppear {
             bluetooth.start()   // the control link, ready by itself in either mode
@@ -106,97 +100,10 @@ struct ContentView: View {
         }
     }
 
-    /// Makes the fish swim a lap, spin, loop or blush (later also from the companion).
-    private var moveButtons: some View {
-        // From the left, clear of the buttons on the right: moves above, gestures below.
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                moveButton(.lap, systemImage: "point.forward.to.point.capsulepath", label: "Swim a lap")
-                moveButton(.spin, systemImage: "rotate.3d", label: "Spin")
-                moveButton(.loop, systemImage: "arrow.clockwise", label: "Loop")
-                moveButton(.blush, systemImage: "heart", label: "Blush")
-                moveButton(.bubbles, systemImage: "bubbles.and.sparkles", label: "Blow bubbles")
-                moveButton(.stare, systemImage: "eyes", label: "Stare")
-            }
-            HStack(spacing: 10) {
-                moveButton(.shush, systemImage: "hand.point.up", label: "Shush")
-                moveButton(.fart, systemImage: "wind", label: "Fart")
-                moveButton(.laugh, systemImage: "face.smiling", label: "Laugh")
-                playDeadButton
-            }
-        }
-        .padding(.leading, 16)
-        .padding(.bottom, 24)
-    }
-
-    /// One button: plays dead, or wakes her while she is.
-    @ViewBuilder private var playDeadButton: some View {
-        if avatarSession.fishPlaysDead {
-            moveButton(.wakeUp, systemImage: "sun.max", label: "Wake up")
-        } else {
-            moveButton(.playDead, systemImage: "zzz", label: "Play dead")
-        }
-    }
-
-    /// One button: hides the fish, or shows her again while she's hidden.
-    @ViewBuilder private var hideShowButton: some View {
-        if avatarSession.fishHidden {
-            moveButton(.show, systemImage: "eye", label: "Show")
-        } else {
-            moveButton(.hide, systemImage: "eye.slash", label: "Hide")
-        }
-    }
-
-    private func moveButton(_ move: SwimMove, systemImage: String, label: String) -> some View {
-        Button {
-            avatarSession.pendingMoves.append(move)
-        } label: {
-            Image(systemName: systemImage)
-                .font(.title3)
-                .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-    }
-
-    private var settingsButton: some View {
-        Button {
-            avatarSession.showDebug.toggle()
-        } label: {
-            Image(systemName: "slider.horizontal.3")
-                .font(.title3)
-                .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Settings")
-    }
-
-    /// The hat: what the fish wears, each put on or taken off.
-    private var accessoriesMenu: some View {
-        Menu {
-            ForEach(avatarSession.availableAccessories) { accessory in
-                Toggle(accessory.title, systemImage: accessory.systemImage, isOn: Binding(
-                    get: { avatarSession.wornAccessories.contains(accessory) },
-                    set: { on in
-                        if on {
-                            avatarSession.wornAccessories.insert(accessory)
-                        } else {
-                            avatarSession.wornAccessories.remove(accessory)
-                        }
-                    }
-                ))
-            }
-        } label: {
-            Image(systemName: avatarSession.wornAccessories.isEmpty ? "hat.widebrim" : "hat.widebrim.fill")
-                .font(.title3)
-                .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
-        }
-        .menuActionDismissBehavior(.disabled)   // put on several at once
-        .buttonStyle(.plain)
-        .accessibilityLabel("Accessories")
+    /// The screen's safe-area insets (the Dynamic Island on top), which the canvas ignores.
+    private var screenInsets: UIEdgeInsets {
+        let scene = UIApplication.shared.connectedScenes.first { $0.session.role == .windowApplication } as? UIWindowScene
+        return scene?.keyWindow?.safeAreaInsets ?? .zero
     }
 }
 

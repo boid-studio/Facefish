@@ -400,4 +400,7 @@ void accessorySurface(realitykit::surface_parameters params) {
     surface.set_specular(tex.specular().sample(s, uv).r * half(material.specular_scale()));
     surface.set_clearcoat(tex.clearcoat().sample(s, uv).r * half(material.clearcoat_scale()));
     surface.set_clearcoat_roughness(tex.clearcoat_roughness().sample(s, uv).r * half(material.clearcoat_roughness_scale()));
+    // See-through parts (a snorkel mask's glass).
+    surface.set_opacity(tex.opacity().sample(s, uv).r * half(material.opacity_scale())
+                        * tex.base_color().sample(s, uv).a);
 }
