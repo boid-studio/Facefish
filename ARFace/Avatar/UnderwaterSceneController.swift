@@ -743,7 +743,8 @@ final class UnderwaterSceneController {
 
     /// The water's colour: the palette texture every scene material reads, and the lights and specks.
     private func setLook(_ newLook: SceneLook) {
-        guard newLook.water != look.water || newLook.brightness != look.brightness else { return }
+        guard newLook.water != look.water || newLook.brightness != look.brightness
+                || newLook.underwaterTint != look.underwaterTint else { return }
         look = newLook
         if let paletteTexture, let image = Self.paletteImage(look) {
             do {
@@ -775,9 +776,10 @@ final class UnderwaterSceneController {
 
     private static let paletteOptions = TextureResource.CreateOptions(semantic: .raw, mipmapsMode: .none)
 
-    /// 5 x 1 texels: deep, mid, shallow water, rays, and magenta marking it (WaterPalette).
+    /// 6 x 1 texels: deep, mid, shallow water, rays, magenta marking it, and the tint (WaterPalette).
     private static func paletteImage(_ look: SceneLook) -> CGImage? {
-        let colors = [look.deepWater, look.midWater, look.shallowWater, look.rays, SIMD3<Float>(1, 0, 1)]
+        let colors = [look.deepWater, look.midWater, look.shallowWater, look.rays, SIMD3<Float>(1, 0, 1),
+                      SIMD3<Float>(look.underwaterTint, 0, 0)]
         var bytes: [UInt8] = []
         for color in colors {
             for value in [color.x, color.y, color.z] {

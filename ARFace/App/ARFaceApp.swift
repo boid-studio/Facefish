@@ -64,6 +64,7 @@ struct ARFaceApp: App {
                         case .debrisAmount(let v): AvatarSession.shared.avatarDebug.debrisAmount = min(max(v, 0), 2)
                         case .waterMotion(let v): AvatarSession.shared.avatarDebug.waterMotion = min(max(v, 0), 2)
                         case .distortion(let v): AvatarSession.shared.avatarDebug.distortion = min(max(v, 0), 1)
+                        case .underwaterTint(let v): AvatarSession.shared.avatarDebug.underwaterTint = min(max(v, 0), 1)
                         case .scene(let part, let on): AvatarSession.shared.avatarDebug[scene: part] = on
                         case .saveScene: AvatarSession.shared.avatarDebug.saveScene()
                         case .accessory(let accessory, let on):

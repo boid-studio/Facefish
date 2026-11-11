@@ -9,19 +9,20 @@ struct SceneControlView: View {
     @State private var bluetooth = BluetoothControl.shared
     @Environment(\.self) private var environment
     /// Linear RGB, "r,g,b".
-    @AppStorage("remote.scene.water") private var water = "0.02,0.26,0.44"
+    @AppStorage("remote.scene.water") private var water = "0.01,0.07,0.2"
     @AppStorage("remote.scene.whiteBalance") private var whiteBalance = 0.0
-    @AppStorage("remote.scene.fieldOfView") private var fieldOfView = 35.0
-    @AppStorage("remote.scene.vignette") private var vignette = 0.0
-    @AppStorage("remote.scene.vignetteSize2") private var vignetteSize = 0.6
-    @AppStorage("remote.scene.vignetteSoftness") private var vignetteSoftness = 1.2
-    @AppStorage("remote.scene.brightness") private var brightness = 1.0
-    @AppStorage("remote.cameraZ") private var cameraZ = 0.75
+    @AppStorage("remote.scene.fieldOfView") private var fieldOfView = 27.6
+    @AppStorage("remote.scene.vignette") private var vignette = 0.54
+    @AppStorage("remote.scene.vignetteSize2") private var vignetteSize = 0.79
+    @AppStorage("remote.scene.vignetteSoftness") private var vignetteSoftness = 1.0
+    @AppStorage("remote.scene.brightness") private var brightness = 0.53
+    @AppStorage("remote.cameraZ") private var cameraZ = 1.05
     @AppStorage("remote.scene.causticIntensity") private var causticIntensity = 1.0
     @AppStorage("remote.scene.motionReaction") private var motionReaction = 1.0
     @AppStorage("remote.scene.debris") private var debrisAmount = 1.0
     @AppStorage("remote.scene.waterMotion") private var waterMotion = 1.0
     @AppStorage("remote.scene.distortion") private var distortion = 0.0
+    @AppStorage("remote.scene.underwaterTint") private var underwaterTint = 0.0
     /// The effects switched off, comma-separated SceneSwitch names.
     @AppStorage("remote.scene.off") private var switchedOff = ""
 
@@ -62,10 +63,13 @@ struct SceneControlView: View {
                     slider("Background brightness", value: $brightness, in: 0...1.3, format: "%.2f", unit: "") {
                         .waterBrightness(Float($0))
                     }
+                    slider("Underwater tint", value: $underwaterTint, in: 0...1, format: "%.2f", unit: "") {
+                        .underwaterTint(Float($0))
+                    }
                 } header: {
                     Text("Water colour")
                 } footer: {
-                    Text("The whole sea follows: depth, light rays, the haze on the fish, the lights and specks. Background brightness 0 is black water, 1 as designed; the fish stays lit.")
+                    Text("The whole sea follows: depth, light rays, the haze on the fish, the lights and specks. Background brightness 0 is black water, 1 as designed; the fish stays lit. Underwater tint: how much the water tints and hazes the fish (0 shows her true colours).")
                 }
 
                 Section {
@@ -209,6 +213,7 @@ struct SceneControlView: View {
         debrisAmount = Double(scene.debrisAmount)
         waterMotion = Double(scene.waterMotion)
         distortion = Double(scene.distortion)
+        underwaterTint = Double(scene.underwaterTint)
         switchedOff = scene.off.sorted().joined(separator: ",")
     }
 

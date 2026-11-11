@@ -5,10 +5,13 @@ using namespace metal;
 constant int kWaveCount = 6;   // fewer waves = cheaper caustics (the GPU's biggest cost on the fish); 6 still looks organic
 
 // The water's colours (SceneLook, the control app's Scene tab): the depth gradient and the light
-// rays. Each material carries them in its custom texture, 5 x 1 texels: deep, mid, shallow, rays,
-// and magenta to mark it (without it, the sea blue the scene was designed in).
+// rays. Each material carries them in its custom texture, 6 x 1 texels: deep, mid, shallow, rays,
+// magenta to mark it (without it, the sea blue the scene was designed in), and the underwater
+// tint's strength (red; 1 if missing).
 struct WaterPalette {
     half3 deep, mid, shallow, rays;
+    /// How much the water tints and hazes the fish, 0 (her true colours) ... 1.
+    half tint;
 };
 
 static WaterPalette defaultPalette() {
@@ -17,6 +20,7 @@ static WaterPalette defaultPalette() {
     p.mid = half3(0.02, 0.26, 0.44);
     p.shallow = half3(0.18, 0.62, 0.78);
     p.rays = half3(0.35, 0.7, 0.8);
+    p.tint = 1.0;
     return p;
 }
 
@@ -31,6 +35,7 @@ static WaterPalette waterPalette(Texture palette) {
     p.mid = palette.sample(s, float2(1.5, 0.5)).rgb;
     p.shallow = palette.sample(s, float2(2.5, 0.5)).rgb;
     p.rays = palette.sample(s, float2(3.5, 0.5)).rgb;
+    p.tint = palette.get_width() >= 6 ? palette.sample(s, float2(5.5, 0.5)).r : half(1.0);
     return p;
 }
 
@@ -77,13 +82,13 @@ static half3 caustics(float2 p, float time, float focus) {
 // `tintScale` (the material's tint brightness) scales the scatter with the material.
 static half3 underwaterTint(half3 color, float3 position, half tintScale, WaterPalette palette) {
     // Reds absorbed, and a slow shimmer of brightness as surface light passes over.
-    half3 tinted = color * half3(0.86, 0.96, 1.0);
-    return mix(tinted, waterColor(position.y + 0.3, palette), half(0.06));
+    half3 tinted = color * mix(half3(1.0), half3(0.86, 0.96, 1.0), palette.tint);
+    return mix(tinted, waterColor(position.y + 0.3, palette), half(0.06) * palette.tint);
 }
 
 static half3 waterScatter(float3 position, half tintScale, float time, WaterPalette palette) {
     float flicker = 0.85 + 0.15 * sin(time * 0.9 + position.x * 6.0) * sin(time * 0.53 + position.y * 4.0 + 1.3);
-    return waterColor(position.y + 0.3, palette) * half(0.07 * flicker) * tintScale;
+    return waterColor(position.y + 0.3, palette) * half(0.07 * flicker) * tintScale * palette.tint;
 }
 
 // PBR passthrough that adds caustic light on upward-facing surfaces.

@@ -26,6 +26,9 @@ nonisolated struct SceneLook: Equatable {
     var brightness: Float = 1
     /// The image wavering as if seen through moving water, 0 (off) ... 1 (strong).
     var distortion: Float = 0
+    /// How much the water tints and hazes the fish (reds absorbed, the water's colour scattered in,
+    /// darks lifted): 0 her true colours ... 1 the underwater look.
+    var underwaterTint: Float = 0
 
     static let defaultWater = SIMD3<Float>(0.02, 0.26, 0.44)
 
@@ -149,26 +152,27 @@ nonisolated enum WaterPreset: String, CaseIterable, Identifiable {
 /// the control app reads it on connecting: the main app is where it lives. Short keys, so it fits
 /// one Bluetooth read.
 nonisolated struct SceneSettings: Codable, Equatable {
-    var water = SceneLook.defaultWater
+    var water = WaterPreset.deepSea.water
     var whiteBalance: Float = 0
-    var fieldOfView: Float = 35
-    var cameraZ: Float = 0.75
-    var vignette: Float = 0
-    var vignetteSize: Float = 0.6
-    var vignetteSoftness: Float = 1.2
-    var brightness: Float = 1
+    var fieldOfView: Float = 27.6
+    var cameraZ: Float = 1.05
+    var vignette: Float = 0.54
+    var vignetteSize: Float = 0.79
+    var vignetteSoftness: Float = 1.0
+    var brightness: Float = 0.53
     var causticIntensity: Float = 1
     var motionReaction: Float = 1
     var debrisAmount: Float = 1
     var waterMotion: Float = 1
     var distortion: Float = 0
+    var underwaterTint: Float = 0
     /// The effects switched off (SceneSwitch names).
     var off: [String] = []
 
     enum CodingKeys: String, CodingKey {
         case water = "w", whiteBalance = "wb", fieldOfView = "fov", cameraZ = "z", vignette = "v",
              vignetteSize = "vs", vignetteSoftness = "vf", brightness = "b", causticIntensity = "c",
-             motionReaction = "m", debrisAmount = "d", waterMotion = "wm", distortion = "ds", off = "o"
+             motionReaction = "m", debrisAmount = "d", waterMotion = "wm", distortion = "ds", underwaterTint = "ut", off = "o"
     }
 
     init() {}
@@ -189,6 +193,7 @@ nonisolated struct SceneSettings: Codable, Equatable {
         debrisAmount = try c.decodeIfPresent(Float.self, forKey: .debrisAmount) ?? d.debrisAmount
         waterMotion = try c.decodeIfPresent(Float.self, forKey: .waterMotion) ?? d.waterMotion
         distortion = try c.decodeIfPresent(Float.self, forKey: .distortion) ?? d.distortion
+        underwaterTint = try c.decodeIfPresent(Float.self, forKey: .underwaterTint) ?? d.underwaterTint
         off = try c.decodeIfPresent([String].self, forKey: .off) ?? d.off
     }
 
