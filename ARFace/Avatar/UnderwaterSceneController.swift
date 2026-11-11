@@ -365,13 +365,15 @@ final class UnderwaterSceneController {
                     disabledMaterials: faceMaterials.disabled,
                     kind: .face
                 ))
-            } else if partCount == 1, !hasBlendShapes {
+            } else if partCount == 1, !hasBlendShapes || isEyelid {
+                // (The lids have a blend shape, their lashes closing; that's fine for their material.)
                 var model = existingModel
                 let originalMaterials = model.materials
-                let enabledMaterials = isEyelid ? originalMaterials : originalMaterials.map {
+                let lidMaterials = isEyelid ? originalMaterials.map { lidMaterial(from: $0) ?? $0 } : []
+                let enabledMaterials = isEyelid ? lidMaterials : originalMaterials.map {
                     (isEyeball ? eyeMaterial(from: $0) : customMaterial(from: $0, causticsEnabled: true, fog: 0, fin: fin)) ?? $0
                 }
-                let disabledMaterials = isEyelid ? originalMaterials : isEyeball ? enabledMaterials : originalMaterials.map {
+                let disabledMaterials = isEyelid ? lidMaterials : isEyeball ? enabledMaterials : originalMaterials.map {
                     customMaterial(from: $0, causticsEnabled: false, fog: 0, fin: fin) ?? $0
                 }
                 model.materials = enabledMaterials
@@ -415,6 +417,18 @@ final class UnderwaterSceneController {
             return nil
         }
         return (enabled, disabled)
+    }
+
+    /// The eyelids' material (lidSurface): their own look, but where the opacity map says
+    /// see-through they're gone, shine and all (a transparent material otherwise still reflects
+    /// the studio, a grey ghost of the lid around the lashes).
+    private func lidMaterial(from base: any Material) -> CustomMaterial? {
+        guard let library else { return nil }
+        guard var material = try? CustomMaterial(from: base, surfaceShader: .init(named: "lidSurface", in: library)) else {
+            return nil
+        }
+        material.custom.value = .zero
+        return material
     }
 
     /// The eyeballs' material (eyeSurface): clean and glossy.

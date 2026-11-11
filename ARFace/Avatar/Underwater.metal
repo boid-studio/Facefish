@@ -141,6 +141,32 @@ void causticFinSurface(realitykit::surface_parameters params) {
     causticSurfaceImpl(params, float4(32.0, 6.0, 1.4, 1.0));
 }
 
+// The eyelids and lashes: their own colours, cut out by the opacity map (read as data, not
+// colour). Fully see-through parts are dropped, and the shine fades with the opacity, so a
+// transparent lid doesn't still reflect the studio around the lashes.
+[[visible]]
+void lidSurface(realitykit::surface_parameters params) {
+    constexpr sampler s(address::repeat, filter::linear, mip_filter::linear);
+    auto tex = params.textures();
+    auto material = params.material_constants();
+
+    float2 uv = params.geometry().uv0();
+    uv.y = 1.0 - uv.y;
+
+    half4 base = tex.base_color().sample(s, uv);
+    half opacity = tex.opacity().sample(s, uv).r * half(material.opacity_scale()) * base.a;
+    if (opacity < 0.02h) {
+        discard_fragment();
+    }
+
+    auto surface = params.surface();
+    surface.set_base_color(base.rgb * half3(material.base_color_tint()));
+    surface.set_roughness(tex.roughness().sample(s, uv).r * half(material.roughness_scale()));
+    surface.set_metallic(tex.metallic().sample(s, uv).r * half(material.metallic_scale()));
+    surface.set_specular(tex.specular().sample(s, uv).r * half(material.specular_scale()) * opacity);
+    surface.set_opacity(opacity);
+}
+
 // The eyeballs: their own colours, glossy, without the caustics or the water's tint.
 [[visible]]
 void eyeSurface(realitykit::surface_parameters params) {

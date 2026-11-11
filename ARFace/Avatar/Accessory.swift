@@ -16,7 +16,7 @@ nonisolated enum Accessory: String, Codable, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .mask: "Mask"
+        case .mask: "Gold mask"
         case .brows: "Brows"
         case .tophat: "Top hat"
         case .snorkel: "Snorkel mask"
