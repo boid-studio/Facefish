@@ -20,3 +20,6 @@ build
 Packages/RealityKitContent/.build/
 Packages/RealityKitContent/.swiftpm/
 *.xcuserstate
+
+# FTP deploy credentials
+docs/website/.env.deploy

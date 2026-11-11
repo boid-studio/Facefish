@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Facefish</title><meta name="description" content="Support and privacy information for the Facefish iOS app."><link rel="stylesheet" href="style.css"></head>
+<body><header><a class="brand" href="index.html">🐟 Facefish</a>
+<nav><a href="support.html">Support</a><a href="privacy.html">Privacy Policy</a></nav></header><main>
+<h1>Facefish</h1>
+<p>Facefish turns your face into an animated fish. It uses your iPhone or iPad's TrueDepth camera to follow your head and expressions and drives a fish avatar in an underwater scene.</p>
+<div class="shots" aria-label="App screenshots">
+<div class="phone">
+<div class="slides" id="slides">
+<div class="slide"><img src="img/03.jpg" alt="Facefish screenshot 1" width="240" height="522"></div>
+<div class="slide"><img src="img/04.jpg" alt="Facefish screenshot 2" width="240" height="522"></div>
+<div class="slide"><img src="img/05.jpg" alt="Facefish screenshot 3" width="240" height="522"></div>
+<div class="slide"><img src="img/06.jpg" alt="Facefish screenshot 4" width="240" height="522"></div>
+<div class="slide"><img src="img/07.jpg" alt="Facefish screenshot 5" width="240" height="522"></div>
+<div class="slide"><img src="img/08.jpg" alt="Facefish screenshot 6" width="240" height="522"></div>
+<div class="slide"><img src="img/10.jpg" alt="Facefish screenshot 7" width="240" height="522"></div>
+<div class="slide"><img src="img/12.jpg" alt="Facefish screenshot 8" width="240" height="522"></div>
+<div class="slide"><img src="img/17.jpg" alt="Facefish screenshot 9" width="240" height="522"></div>
+</div></div>
+<div class="controls"><button id="prev" aria-label="Previous screenshot">&#8249;</button><div class="dots" id="dots"></div><button id="next" aria-label="Next screenshot">&#8250;</button></div>
+</div>
+<script>
+const sl=document.getElementById('slides'),n=sl.children.length,dots=document.getElementById('dots');
+for(let i=0;i<n;i++){const b=document.createElement('button');b.setAttribute('aria-label','Screenshot '+(i+1));b.onclick=()=>go(i);dots.appendChild(b)}
+const cur=()=>Math.round(sl.scrollLeft/sl.clientWidth);
+const go=i=>sl.scrollTo({left:((i+n)%n)*sl.clientWidth,behavior:'smooth'});
+const mark=()=>[...dots.children].forEach((d,i)=>d.classList.toggle('on',i===cur()));
+sl.addEventListener('scroll',mark);mark();
+document.getElementById('prev').onclick=()=>go(cur()-1);
+document.getElementById('next').onclick=()=>go(cur()+1);
+</script>
+<div class="cards">
+<a class="card" href="support.html"><h2>Support</h2><p>Help, troubleshooting and how to contact us.</p></a>
+<a class="card" href="privacy.html"><h2>Privacy Policy</h2><p>What Facefish does and does not do with your data.</p></a>
+</div>
+</main><footer>&copy; 2026 [DEVELOPER NAME]. Facefish is an iOS app.</footer></body></html>

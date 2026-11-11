@@ -1,0 +1,27 @@
+:root{--bg:#f5fafc;--fg:#12303d;--muted:#52707d;--accent:#0a7ea4;--card:#fff;--line:#d3e3ea}
+@media (prefers-color-scheme:dark){:root{--bg:#07161d;--fg:#e3f1f6;--muted:#94b3bf;--accent:#5cc8ec;--card:#0d232d;--line:#1c3947}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main,header,footer{max-width:720px;margin:0 auto;padding:0 20px}
+header{padding-top:40px;padding-bottom:8px}
+header a.brand{font-weight:700;font-size:1.25rem;color:var(--fg);text-decoration:none}
+nav{margin-top:8px}nav a{margin-right:16px}
+a{color:var(--accent)}
+h1{font-size:2rem;margin:.6em 0 .2em}h2{margin-top:1.8em;font-size:1.25rem}
+.meta{color:var(--muted);font-size:.9rem}
+.cards{display:grid;gap:16px;margin:28px 0}
+.card{display:block;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;text-decoration:none;color:var(--fg)}
+.card h2{margin:0 0 6px;color:var(--accent)}.card p{margin:0;color:var(--muted)}
+footer{padding-top:32px;padding-bottom:48px;color:var(--muted);font-size:.9rem;border-top:1px solid var(--line);margin-top:48px}
+.shots{margin:28px 0;display:flex;flex-direction:column;align-items:center}
+.phone{width:min(280px,80vw);padding:9px;background:#0b0b0d;border-radius:46px;box-shadow:0 0 0 2px #3a3d42,0 0 0 3px #15161a,0 14px 30px rgba(0,0,0,.28);position:relative}
+.phone::after{content:"";position:absolute;left:-4px;top:110px;width:3px;height:48px;border-radius:2px;background:#3a3d42;box-shadow:0 66px 0 #3a3d42}
+.slides{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;border-radius:37px;scrollbar-width:none}
+.slides::-webkit-scrollbar{display:none}
+.slide{flex:0 0 100%;scroll-snap-align:center}
+.slide img{display:block;width:100%;height:auto}
+.controls{display:flex;align-items:center;gap:14px;margin-top:20px}
+.controls>button{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--card);color:var(--fg);font-size:1.4rem;line-height:1;cursor:pointer}
+.dots{display:flex;gap:8px}
+.dots button{width:9px;height:9px;padding:0;border-radius:50%;border:0;background:var(--line);cursor:pointer}
+.dots button.on{background:var(--accent)}
